@@ -1,12 +1,14 @@
 :root {
   color-scheme: dark;
   --bg: #0f1012;
-  --panel: #1d1d1f;
+  --panel: #000;
   --panel-soft: #25262a;
   --text: #fafafa;
   --muted: #8f98a3;
   --line: rgba(255, 255, 255, 0.86);
   --focus: #9ee7ff;
+  --frame-rest: clamp(12px, 1.6vh, 18px);
+  --frame-expanded: clamp(24px, 3.4vh, 34px);
   --rainbow: linear-gradient(
     100deg,
     #ff2f4f,
@@ -24,6 +26,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   min-height: 100%;
@@ -32,12 +38,13 @@ body {
 body {
   margin: 0;
   overflow: hidden;
-  background: var(--panel);
+  background: #000;
   font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", "Trebuchet MS", system-ui, sans-serif;
 }
 
 button,
 input {
+  appearance: none;
   font: inherit;
 }
 
@@ -49,31 +56,40 @@ input {
 }
 
 .todo-board {
+  --frame: var(--frame-rest);
   position: relative;
   width: 100vw;
   height: 100vh;
   min-height: 520px;
   border-radius: 0;
-  padding: clamp(54px, 7vh, 78px) clamp(18px, 5vw, 72px) clamp(34px, 5vh, 56px);
-  background:
-    linear-gradient(var(--panel), var(--panel)) padding-box,
-    var(--rainbow) border-box;
-  background-size: auto, 240% 240%;
-  border: 8px solid transparent;
+  padding: var(--frame);
+  background-image: var(--rainbow);
+  background-size: 260% 260%;
+  border: 0;
   box-shadow:
-    inset 0 0 0 2px rgba(0, 0, 0, 0.72),
     0 26px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
   animation: shimmer 8s linear infinite;
-  transition: border-width 180ms ease, padding-top 180ms ease, box-shadow 180ms ease;
+  transition: padding 180ms ease, box-shadow 180ms ease;
 }
 
+.todo-board::before {
+  content: "";
+  position: absolute;
+  inset: var(--frame);
+  z-index: 0;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+  transition: inset 180ms ease;
+}
+
+.todo-board:has(.board-title:hover),
+.todo-board:has(.board-title:focus-visible),
 .todo-board.editing-title {
-  border-width: 12px;
-  padding-top: clamp(62px, 8vh, 88px);
-  box-shadow:
-    inset 0 0 0 2px rgba(0, 0, 0, 0.72),
-    0 0 44px rgba(126, 222, 255, 0.28),
-    0 26px 60px rgba(0, 0, 0, 0.3);
+  --frame: var(--frame-expanded);
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.3);
 }
 
 .board-title-wrap,
@@ -81,83 +97,128 @@ input {
   position: absolute;
   top: 0;
   left: 50%;
-  z-index: 5;
-  transform: translate(-50%, -1px);
+  z-index: 6;
+  height: var(--frame);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%);
 }
 
 .board-title,
 .title-editor input {
-  max-width: min(74vw, 720px);
-  min-width: 130px;
+  max-width: min(42vw, 360px);
+  min-width: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--text);
-  background: transparent;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none;
+  backdrop-filter: none;
   text-shadow:
     0 1px 2px rgba(0, 0, 0, 0.7),
     0 0 8px rgba(0, 0, 0, 0.38);
-  font-size: clamp(0.95rem, 1.55vw, 1.55rem);
+  font-size: clamp(0.68rem, 1vw, 0.98rem);
   line-height: 1;
   text-align: center;
   white-space: nowrap;
-  padding: 4px 18px 7px;
+  padding: 1px 4px 3px;
+  transition:
+    max-width 160ms ease,
+    padding 160ms ease,
+    font-size 160ms ease,
+    color 160ms ease;
 }
 
 .board-title {
   cursor: text;
+  outline: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+.board-title:hover,
 .board-title:focus-visible,
-.title-editor input:focus-visible,
+.todo-board.editing-title .title-editor input {
+  max-width: min(74vw, 720px);
+  font-size: clamp(0.95rem, 1.55vw, 1.55rem);
+  padding-inline: 12px;
+  background: transparent !important;
+}
+
 .todo-text:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
 }
 
+.board-title:focus-visible,
+.title-editor input:focus-visible {
+  outline: 0;
+}
+
 .title-editor input {
   width: min(74vw, 720px);
-  background: rgba(29, 29, 31, 0.28);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+  background: transparent !important;
 }
 
 .viewport {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+.viewport::before,
+.viewport::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  height: clamp(70px, 13vh, 160px);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.viewport::before {
+  top: 0;
+  background: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.86) 34%, rgba(0, 0, 0, 0) 100%);
+}
+
+.viewport::after {
+  bottom: 0;
+  background: linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.86) 34%, rgba(0, 0, 0, 0) 100%);
+}
+
+.viewport.at-scroll-top::before,
+.viewport.at-scroll-bottom::after {
+  opacity: 0;
 }
 
 .list-stage {
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
+  align-items: start;
+  justify-items: center;
   perspective: 1200px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.list-stage::-webkit-scrollbar {
+  display: none;
 }
 
 .todo-list {
-  width: min(48rem, 88%);
-  max-height: 100%;
+  width: min(34rem, 88%);
   margin: 0;
   padding: 0 10px;
   list-style: none;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.26) transparent;
-}
-
-.todo-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.todo-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 999px;
-}
-
-.ancestor-list {
-  pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .divider {
@@ -173,6 +234,15 @@ input {
   cursor: pointer;
 }
 
+.divider > span {
+  position: absolute;
+  width: min(100%, 190px);
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
 .static-divider {
   pointer-events: none;
   cursor: default;
@@ -182,20 +252,21 @@ input {
 .divider::after {
   content: "";
   position: absolute;
-  width: min(100%, 190px);
-  height: 2px;
+  width: 20px;
+  height: 3px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  transition: width 160ms ease, height 160ms ease, transform 160ms ease, background 160ms ease;
+  background: var(--text);
+  opacity: 0;
+  transform: scale(0.55);
+  transition: opacity 140ms ease, transform 140ms ease;
 }
 
 .divider:hover::before,
 .divider:focus-visible::before,
 .divider:hover::after,
 .divider:focus-visible::after {
-  width: 20px;
-  height: 4px;
-  background: var(--text);
+  opacity: 1;
+  transform: scale(1);
 }
 
 .static-divider::after {
@@ -204,14 +275,26 @@ input {
 
 .static-divider:hover::before,
 .static-divider:focus-visible::before {
-  width: min(100%, 190px);
-  height: 2px;
-  background: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transform: scale(0.55);
 }
 
 .divider:hover::after,
 .divider:focus-visible::after {
-  transform: rotate(90deg);
+  transform: rotate(90deg) scale(1);
+}
+
+.divider:hover > span,
+.divider:focus-visible > span {
+  opacity: 0.28;
+  transform: scaleX(0.72);
+}
+
+.static-divider > span,
+.static-divider:hover > span,
+.static-divider:focus-visible > span {
+  opacity: 1;
+  transform: none;
 }
 
 .divider:focus-visible {
@@ -221,19 +304,19 @@ input {
 }
 
 .todo-row {
-  display: flex;
-  justify-content: center;
+  display: block;
+  text-align: center;
   touch-action: none;
 }
 
 .todo-item {
+  --control-size: clamp(1.35rem, 2vw, 1.65rem);
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  display: inline-grid;
+  place-items: center;
   max-width: 100%;
   min-height: 44px;
+  min-width: 1.5ch;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -279,7 +362,8 @@ input {
   background: rgba(143, 152, 163, 0.7);
 }
 
-.todo-text {
+.todo-text,
+.todo-edit-input {
   position: relative;
   display: inline-block;
   min-width: 1.5ch;
@@ -294,17 +378,119 @@ input {
   padding: 0 4px 4px;
 }
 
+.todo-edit-input {
+  justify-self: center;
+  width: 100%;
+  margin-inline: auto;
+  border: 0;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 -0.08em 0 rgba(255, 255, 255, 0.74);
+  user-select: text;
+  cursor: text;
+}
+
+.todo-item.editing-item {
+  width: min(78vw, 760px);
+}
+
+.todo-controls {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 1.7em;
+  transform: translateY(-50%);
+}
+
+.todo-list[data-focus-distance="1"] > .todo-row > .todo-item,
+.todo-list[data-focus-distance="1"] > .divider {
+  filter: blur(1px);
+}
+
+.todo-list[data-focus-distance="2"] > .todo-row > .todo-item,
+.todo-list[data-focus-distance="2"] > .divider {
+  filter: blur(2.4px);
+}
+
+.todo-list[data-focus-distance="3"] > .todo-row > .todo-item,
+.todo-list[data-focus-distance="3"] > .divider,
+.todo-list[data-focus-distance="4"] > .todo-row > .todo-item,
+.todo-list[data-focus-distance="4"] > .divider {
+  filter: blur(4px);
+}
+
+.focus-list[data-depth="0"] {
+  width: min(42rem, 92%);
+}
+
+.todo-list[data-depth="0"] > .todo-row .todo-text,
+.todo-list[data-depth="0"] > .todo-row .todo-edit-input {
+  font-size: clamp(1.8rem, 4vw, 3.6rem);
+}
+
+.todo-list[data-depth="1"] > .todo-row .todo-text,
+.todo-list[data-depth="1"] > .todo-row .todo-edit-input {
+  font-size: clamp(1.25rem, 2.45vw, 2.3rem);
+}
+
+.todo-list[data-depth="2"] > .todo-row .todo-text,
+.todo-list[data-depth="2"] > .todo-row .todo-edit-input {
+  font-size: clamp(1.18rem, 2.25vw, 2.1rem);
+}
+
+.todo-list[data-depth="3"] > .todo-row .todo-text,
+.todo-list[data-depth="3"] > .todo-row .todo-edit-input {
+  font-size: clamp(1.05rem, 2.05vw, 1.95rem);
+}
+
+.focus-list > .context-sibling .todo-item {
+  opacity: 0.72;
+}
+
+.todo-list[data-depth="0"] > .divider {
+  width: 50%;
+  height: 26px;
+}
+
+.subspace {
+  display: block;
+  margin: 2px 0 0;
+  text-align: center;
+  animation: unfold 220ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+  transform-origin: top center;
+}
+
+.subspace.is-closing {
+  pointer-events: none;
+  animation: foldAway 150ms cubic-bezier(0.3, 0, 0.7, 0.2) both;
+}
+
+.subspace > .todo-list {
+  width: min(28rem, 86%);
+  margin: 0 auto;
+  padding-bottom: 0;
+}
+
+.subspace .subspace > .todo-list {
+  width: min(26rem, 84%);
+}
+
 .todo-text::after {
   content: "";
   position: absolute;
   left: 0;
   top: 50%;
-  width: 0;
+  width: 100%;
   height: 0.1em;
   border-radius: 999px;
   background: currentColor;
-  transform: translateY(-50%);
-  transition: width 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translateY(-50%) scaleX(0);
+  transform-origin: left center;
+  transition: transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .todo-item.completed {
@@ -312,107 +498,151 @@ input {
 }
 
 .todo-item.completed .todo-text::after {
-  width: 100%;
+  transform: translateY(-50%) scaleX(1);
 }
 
 .child-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-  color: var(--text);
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-size);
+  height: var(--control-size);
+  color: var(--panel);
+  background: var(--text);
+  border: 0;
+  border-radius: 50%;
   font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: clamp(0.68rem, 1.05vw, 0.86rem);
+  font-size: clamp(0.62rem, 0.95vw, 0.78rem);
   font-weight: 700;
-  transform: translateY(0.2em);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .child-badge.all-done {
-  color: var(--muted);
+  background: var(--muted);
 }
 
-.child-badge svg {
-  width: 1.05em;
-  height: 1.05em;
-  stroke-width: 2.5;
-}
-
-.context-view {
-  transform: none;
-}
-
-.context-list {
-  width: min(34rem, 86%);
-  padding-top: 6px;
-  padding-bottom: 52px;
-}
-
-.context-list .divider {
-  height: 18px;
-}
-
-.context-list .context-parent .todo-item {
-  color: var(--text);
-}
-
-.context-list .context-parent .todo-text {
-  font-size: clamp(1.9rem, 3.55vw, 3.3rem);
-}
-
-.context-list .context-child .todo-text {
-  font-size: clamp(1.45rem, 2.75vw, 2.45rem);
-}
-
-.context-list .context-sibling .todo-item {
-  opacity: 0.58;
-}
-
-.context-list .context-sibling .todo-text {
-  font-size: clamp(1.65rem, 3.05vw, 2.85rem);
-}
-
-.context-list .context-sibling .todo-item.completed {
-  opacity: 0.5;
-}
-
-.list-view {
-  position: absolute;
-  inset: 0;
-  display: grid;
+.item-action {
+  width: var(--control-size);
+  height: var(--control-size);
+  display: inline-grid;
   place-items: center;
-  transform-origin: top center;
-  opacity: var(--view-opacity);
-  transform:
-    translateY(calc(var(--ancestor-shift) - var(--selected-offset)))
-    scale(var(--view-scale));
-  transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
-.list-view[data-distance="0"] {
+.todo-item:hover .item-action {
   opacity: 1;
 }
 
-.list-view.nav-forward {
-  animation: growIn 320ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+.todo-item.completed .item-action,
+.todo-item.editing-item .item-action,
+.todo-list:not([data-focus-distance="0"]) > .todo-row .item-action {
+  display: none;
 }
 
-.list-view.nav-back {
-  animation: settleBack 260ms ease both;
+.item-action:hover,
+.item-action:focus-visible {
+  background: rgba(255, 255, 255, 0.22);
+  outline: 0;
+  transform: scale(1.08);
+}
+
+.delete-action.confirm-delete {
+  opacity: 1;
+  color: #fff;
+  background: #ff3030;
+}
+
+.item-action svg {
+  width: 68%;
+  height: 68%;
+  stroke-width: 2.6;
+}
+
+.list-view {
+  width: 100%;
+  min-height: 100%;
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  transform-origin: top center;
+  padding-top: 0;
+  opacity: 1;
+  transform: none;
+  transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
+}
+
+.focus-view {
+  --camera-scale: 1;
+}
+
+.focus-view[data-depth="1"] {
+  --camera-scale: 1.04;
+}
+
+.focus-view[data-depth="2"] {
+  --camera-scale: 1.14;
+}
+
+.focus-view[data-depth="3"] {
+  --camera-scale: 1.23;
+}
+
+.focus-view[data-depth="4"] {
+  --camera-scale: 1.3;
+}
+
+.focus-view > .focus-list {
+  transform: scale(var(--camera-scale));
+  transform-origin: top center;
+  transition: transform 260ms cubic-bezier(0.2, 0.75, 0.2, 1);
+}
+
+.list-view.nav-forward > .focus-list {
+  animation: cameraStepIn 280ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.list-view.nav-back > .focus-list {
+  animation: cameraStepBack 220ms ease both;
 }
 
 @keyframes shimmer {
   from {
-    background-position: 0 0, 0% 50%;
+    background-position: 0% 50%;
   }
   to {
-    background-position: 0 0, 200% 50%;
+    background-position: 200% 50%;
   }
 }
 
-@keyframes growIn {
+@keyframes cameraStepIn {
+  from {
+    transform: scale(calc(var(--camera-scale) * 0.94));
+  }
+  to {
+    transform: scale(var(--camera-scale));
+  }
+}
+
+@keyframes cameraStepBack {
+  from {
+    transform: scale(calc(var(--camera-scale) * 1.04));
+  }
+  to {
+    transform: scale(var(--camera-scale));
+  }
+}
+
+@keyframes unfold {
   from {
     opacity: 0;
-    transform: translateY(10vh) scale(0.66);
+    transform: translateY(-8px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -420,12 +650,16 @@ input {
   }
 }
 
-@keyframes settleBack {
+@keyframes foldAway {
   from {
-    transform: translateY(-4vh) scale(1.08);
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    max-height: 60vh;
   }
   to {
-    transform: translateY(0) scale(1);
+    opacity: 0;
+    transform: translateY(-8px) scale(0.82);
+    max-height: 0;
   }
 }
 

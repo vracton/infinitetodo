@@ -1,11 +1,13 @@
 const STORAGE_KEY = "infinite-todo:data:v1";
 const CLICK_DELAY = 240;
 const DRAG_THRESHOLD = 6;
+const BACK_ANIMATION_MS = 150;
 
 const board = document.querySelector("#todoBoard");
 const boardTitle = document.querySelector("#boardTitle");
 const titleEditor = document.querySelector("#titleEditor");
 const titleInput = document.querySelector("#titleInput");
+const viewport = document.querySelector("#viewport");
 const listStage = document.querySelector("#listStage");
 
 let state = loadState();
@@ -14,8 +16,11 @@ let clickTimer = null;
 let clickCount = 0;
 let pendingClickItemId = null;
 let pointerState = null;
-let draggedId = null;
+let dragSource = null;
 let navDirection = "none";
+let isNavigatingBack = false;
+let pendingDeleteId = null;
+let editingItemId = null;
 
 render();
 
@@ -26,16 +31,20 @@ titleEditor.addEventListener("submit", (event) => {
 });
 titleInput.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    event.stopPropagation();
     cancelTitleEdit();
   }
 });
 titleInput.addEventListener("blur", finishTitleEdit);
+listStage.addEventListener("scroll", updateScrollFades);
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && document.activeElement !== titleInput) {
+  const isEditingText = document.activeElement === titleInput || document.activeElement?.classList.contains("todo-edit-input");
+  if (event.key === "Escape" && !isEditingText) {
     goBack();
   }
 });
+document.addEventListener("pointermove", resetDeleteIfPointerLeft);
 
 function loadState() {
   try {
@@ -90,6 +99,41 @@ function createId() {
   return `todo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function updateScrollFades() {
+  const maxScroll = Math.max(0, listStage.scrollHeight - listStage.clientHeight);
+  viewport.classList.toggle("at-scroll-top", listStage.scrollTop <= 2);
+  viewport.classList.toggle("at-scroll-bottom", maxScroll - listStage.scrollTop <= 2);
+}
+
+function getCurrentTitle() {
+  const parent = getCurrentParent();
+  return parent ? parent.text : state.title;
+}
+
+function setCurrentTitle(value) {
+  const title = value.trim() || "untitled";
+  const parent = getCurrentParent();
+  if (parent) {
+    parent.text = title;
+  } else {
+    state.title = title;
+  }
+  saveState();
+}
+
+function render() {
+  boardTitle.textContent = getCurrentTitle();
+  board.dataset.depth = currentPath.length;
+  listStage.replaceChildren(createStageView());
+  requestAnimationFrame(updateScrollFades);
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+
+  navDirection = "none";
+}
+
 function getCurrentList() {
   let list = state.items;
   for (const id of currentPath) {
@@ -122,139 +166,16 @@ function getCurrentParent() {
   return parent;
 }
 
-function getCurrentTitle() {
-  const parent = getCurrentParent();
-  return parent ? parent.text : state.title;
-}
-
-function setCurrentTitle(value) {
-  const title = value.trim() || "untitled";
-  const parent = getCurrentParent();
-  if (parent) {
-    parent.text = title;
-  } else {
-    state.title = title;
-  }
-  saveState();
-}
-
-function render() {
-  boardTitle.textContent = getCurrentTitle();
-  board.dataset.depth = currentPath.length;
-  listStage.replaceChildren(...renderPathViews());
-
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
-
-  navDirection = "none";
-}
-
-function renderPathViews() {
-  if (currentPath.length) {
-    return [createContextListView()];
-  }
-
-  const views = [];
-  views.push(createListView(state.items, 0, null));
-  return views;
-}
-
-function createContextListView() {
-  const context = getCurrentContext();
-  if (!context) {
-    currentPath = [];
-    return createListView(state.items, 0, null);
-  }
-
+function createStageView() {
   const view = document.createElement("div");
-  view.className = "list-view context-view";
+  view.className = "list-view focus-view";
   view.dataset.depth = String(currentPath.length);
-  view.dataset.distance = "0";
-  view.style.setProperty("--ancestor-shift", "0vh");
-  view.style.setProperty("--selected-offset", "0rem");
-  view.style.setProperty("--view-scale", 1);
-  view.style.setProperty("--view-opacity", 1);
-  view.style.zIndex = String(currentPath.length + 1);
 
   if (navDirection !== "none") {
     view.classList.add(`nav-${navDirection}`);
   }
 
-  view.appendChild(renderContextList(context));
-  return view;
-}
-
-function getCurrentContext() {
-  let list = state.items;
-  let parentList = state.items;
-  let parent = null;
-
-  for (const id of currentPath) {
-    parentList = list;
-    parent = list.find((candidate) => candidate.id === id);
-    if (!parent) {
-      return null;
-    }
-    parent.children ||= [];
-    list = parent.children;
-  }
-
-  return {
-    parent,
-    parentList,
-    parentIndex: parentList.findIndex((candidate) => candidate.id === parent.id),
-    items: list
-  };
-}
-
-function renderContextList({ parent, parentList, parentIndex, items }) {
-  const list = document.createElement("ol");
-  list.className = "todo-list context-list";
-  list.dataset.depth = String(currentPath.length);
-  list.dataset.parentId = parent.id;
-
-  parentList.slice(0, parentIndex).forEach((item) => {
-    list.appendChild(createStaticDivider());
-    list.appendChild(createTodoRow(item, "context-sibling"));
-  });
-
-  list.appendChild(createStaticDivider());
-  list.appendChild(createTodoRow(parent, "context-parent"));
-  list.appendChild(createDivider(0));
-
-  items.forEach((item, index) => {
-    list.appendChild(createTodoRow(item, "context-child"));
-    list.appendChild(createDivider(index + 1));
-  });
-
-  parentList.slice(parentIndex + 1).forEach((item) => {
-    list.appendChild(createStaticDivider());
-    list.appendChild(createTodoRow(item, "context-sibling"));
-  });
-
-  return list;
-}
-
-function createListView(items, depth, parentId) {
-  const view = document.createElement("div");
-  const distance = currentPath.length - depth;
-  const selectedId = currentPath[depth];
-  const selectedIndex = selectedId ? items.findIndex((item) => item.id === selectedId) : -1;
-  view.className = "list-view";
-  view.dataset.depth = String(depth);
-  view.dataset.distance = String(distance);
-  view.style.setProperty("--ancestor-shift", `-${distance * 28}vh`);
-  view.style.setProperty("--selected-offset", `${Math.max(0, selectedIndex) * 3.6}rem`);
-  view.style.setProperty("--view-scale", 1 + distance * 0.22);
-  view.style.setProperty("--view-opacity", Math.max(0.18, 1 - Math.min(distance, 3) * 0.34));
-  view.style.zIndex = String(depth + 1);
-
-  if (depth === currentPath.length && navDirection !== "none") {
-    view.classList.add(`nav-${navDirection}`);
-  }
-
-  view.appendChild(renderList(items, depth, parentId));
+  view.appendChild(currentPath.length ? renderFocusedList(state.items, 0, null) : renderList(state.items, 0, null));
   return view;
 }
 
@@ -262,48 +183,104 @@ function renderList(items, depth, parentId) {
   const list = document.createElement("ol");
   list.className = "todo-list";
   list.dataset.depth = String(depth);
+  list.dataset.focusDistance = String(Math.max(0, currentPath.length - depth));
   list.dataset.parentId = parentId || "";
-  if (depth !== currentPath.length) {
-    list.classList.add("ancestor-list");
-  }
-  list.appendChild(createDivider(0));
+  list.appendChild(createDivider(0, items, depth));
 
   items.forEach((item, index) => {
-    list.appendChild(createTodoRow(item));
-    list.appendChild(createDivider(index + 1));
+    list.appendChild(createTodoRow(item, depth, parentId, items));
+    list.appendChild(createDivider(index + 1, items, depth));
   });
 
   return list;
 }
 
-function createTodoRow(item, modifier) {
+function renderFocusedList(items, depth, parentId) {
+  const selectedId = currentPath[depth];
+  const selectedIndex = items.findIndex((item) => item.id === selectedId);
+
+  if (selectedIndex < 0) {
+    currentPath = currentPath.slice(0, depth);
+    return renderList(items, depth, parentId);
+  }
+
+  const selected = items[selectedIndex];
+  selected.children ||= [];
+
+  const list = document.createElement("ol");
+  list.className = "todo-list focus-list";
+  list.dataset.depth = String(depth);
+  list.dataset.focusDistance = String(Math.max(0, currentPath.length - depth));
+  list.dataset.parentId = parentId || "";
+
+  items.slice(0, selectedIndex).forEach((item) => {
+    list.appendChild(createStaticDivider(depth));
+    list.appendChild(createTodoRow(item, depth, parentId, items, "context-sibling"));
+  });
+
+  list.appendChild(createStaticDivider(depth));
+  list.appendChild(createTodoRow(selected, depth, parentId, items, "context-parent"));
+
+  const subspace = document.createElement("li");
+  subspace.className = "subspace";
+  subspace.dataset.depth = String(depth + 1);
+  subspace.appendChild(
+    depth + 1 < currentPath.length
+      ? renderFocusedList(selected.children, depth + 1, selected.id)
+      : renderList(selected.children, depth + 1, selected.id)
+  );
+  list.appendChild(subspace);
+
+  items.slice(selectedIndex + 1).forEach((item) => {
+    list.appendChild(createStaticDivider(depth));
+    list.appendChild(createTodoRow(item, depth, parentId, items, "context-sibling"));
+  });
+
+  return list;
+}
+
+function createTodoRow(item, depth, parentId, parentList, modifier) {
   const row = document.createElement("li");
   row.className = modifier ? `todo-row ${modifier}` : "todo-row";
-  row.appendChild(createTodoElement(item));
+  row.dataset.depth = String(depth);
+  row.appendChild(createTodoElement(item, depth, parentId, parentList));
   return row;
 }
 
-function createDivider(index) {
+function createDivider(index, list, depth) {
   const divider = document.createElement("button");
   divider.className = "divider";
   divider.type = "button";
   divider.setAttribute("aria-label", "Add todo");
-  divider.addEventListener("click", () => addItemAt(index));
+  divider.style.setProperty("--depth", depth);
+  divider.appendChild(createDividerLine());
+  divider.addEventListener("click", () => addItemAt(index, list));
   return divider;
 }
 
-function createStaticDivider() {
+function createStaticDivider(depth) {
   const divider = document.createElement("div");
   divider.className = "divider static-divider";
+  divider.style.setProperty("--depth", depth);
   divider.setAttribute("aria-hidden", "true");
+  divider.appendChild(createDividerLine());
   return divider;
 }
 
-function createTodoElement(item) {
+function createDividerLine() {
+  const line = document.createElement("span");
+  line.setAttribute("aria-hidden", "true");
+  return line;
+}
+
+function createTodoElement(item, depth, parentId, parentList) {
+  const canReorder = depth === currentPath.length;
   const todo = document.createElement("div");
   todo.className = "todo-item";
-  todo.draggable = true;
+  todo.draggable = canReorder;
   todo.dataset.id = item.id;
+  todo.dataset.parentId = parentId || "";
+  todo.style.setProperty("--depth", depth);
   todo.tabIndex = 0;
   todo.setAttribute("role", "button");
   todo.setAttribute("aria-label", item.text || "Todo item");
@@ -315,13 +292,25 @@ function createTodoElement(item) {
   }
   if (currentPath.includes(item.id)) {
     todo.classList.add("path-parent");
+    todo.setAttribute("aria-expanded", "true");
+  } else if (hasSublist(item)) {
+    todo.setAttribute("aria-expanded", "false");
   }
 
-  const text = document.createElement("span");
-  text.className = "todo-text";
-  text.textContent = item.text || "untitled";
+  if (editingItemId === item.id) {
+    todo.classList.add("editing-item");
+    todo.draggable = false;
+    const editor = createItemEditor(item);
+    todo.appendChild(editor);
+  } else {
+    const text = document.createElement("span");
+    text.className = "todo-text";
+    text.textContent = item.text || "untitled";
+    todo.appendChild(text);
+  }
 
-  todo.appendChild(text);
+  const controls = document.createElement("span");
+  controls.className = "todo-controls";
 
   const descendantCount = countDescendants(item);
   if (hasSublist(item)) {
@@ -330,35 +319,175 @@ function createTodoElement(item) {
     if (allDescendantsComplete(item)) {
       badge.classList.add("all-done");
     }
-    badge.innerHTML = `<i data-lucide="list-tree" aria-hidden="true"></i><span>${descendantCount}</span>`;
-    todo.appendChild(badge);
+    badge.textContent = String(descendantCount);
+    badge.setAttribute("aria-label", `${descendantCount} items`);
+    controls.appendChild(badge);
   }
 
+  const editAction = document.createElement("button");
+  editAction.className = "edit-action item-action";
+  editAction.type = "button";
+  editAction.setAttribute("aria-label", "Edit todo");
+  editAction.innerHTML = `<i data-lucide="pencil" aria-hidden="true"></i>`;
+  editAction.addEventListener("pointerdown", (event) => event.stopPropagation());
+  editAction.addEventListener("click", (event) => {
+    event.stopPropagation();
+    startItemEdit(item);
+  });
+  controls.appendChild(editAction);
+
+  const deleteAction = document.createElement("button");
+  deleteAction.className = "delete-action item-action";
+  deleteAction.type = "button";
+  deleteAction.setAttribute("aria-label", "Delete todo");
+  deleteAction.innerHTML = `<i data-lucide="trash-2" aria-hidden="true"></i>`;
+  deleteAction.addEventListener("pointerdown", (event) => event.stopPropagation());
+  deleteAction.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (pendingDeleteId === item.id) {
+      deleteItem(item, parentList);
+      return;
+    }
+    pendingDeleteId = item.id;
+    deleteAction.classList.add("confirm-delete");
+  });
+  const resetDeleteConfirmation = () => {
+    if (pendingDeleteId === item.id) {
+      pendingDeleteId = null;
+      deleteAction.classList.remove("confirm-delete");
+      deleteAction.blur();
+    }
+  };
+  deleteAction.addEventListener("mouseleave", resetDeleteConfirmation);
+  controls.addEventListener("mouseleave", resetDeleteConfirmation);
+  todo.addEventListener("mouseleave", resetDeleteConfirmation);
+  controls.appendChild(deleteAction);
+  todo.appendChild(controls);
+
   todo.addEventListener("keydown", (event) => {
+    if (editingItemId === item.id) {
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
-      openSublist(item);
+      if (hasSublist(item)) {
+        openSublist(item);
+      } else {
+        createSublist(item);
+      }
     }
   });
   todo.addEventListener("pointerdown", (event) => beginPointer(event, item));
   todo.addEventListener("pointermove", updatePointer);
   todo.addEventListener("pointerup", (event) => endPointer(event, item));
   todo.addEventListener("pointercancel", clearPointer);
-  todo.addEventListener("dragstart", (event) => beginDrag(event, item));
+  todo.addEventListener("dragstart", (event) => beginDrag(event, item, parentList, parentId, depth));
   todo.addEventListener("dragover", handleDragOver);
   todo.addEventListener("dragleave", handleDragLeave);
-  todo.addEventListener("drop", (event) => handleDrop(event, item));
+  todo.addEventListener("drop", (event) => handleDrop(event, item, parentList, parentId));
   todo.addEventListener("dragend", endDrag);
 
   return todo;
 }
 
-function addItemAt(index) {
-  const list = getCurrentList();
+function createItemEditor(item) {
+  const input = document.createElement("input");
+  input.className = "todo-edit-input";
+  input.type = "text";
+  input.value = item.text || "";
+  input.setAttribute("aria-label", "Todo text");
+  input.addEventListener("pointerdown", (event) => event.stopPropagation());
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      finishItemEdit(item, input.value);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelItemEdit();
+    }
+  });
+  input.addEventListener("blur", () => finishItemEdit(item, input.value));
+
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+
+  return input;
+}
+
+function startItemEdit(item) {
+  clearPendingClick();
+  pendingDeleteId = null;
+  editingItemId = item.id;
+  render();
+}
+
+function finishItemEdit(item, value) {
+  if (editingItemId !== item.id) {
+    return;
+  }
+  item.text = value.trim() || "untitled";
+  editingItemId = null;
+  saveState();
+  render();
+}
+
+function cancelItemEdit() {
+  if (!editingItemId) {
+    return;
+  }
+  editingItemId = null;
+  render();
+}
+
+function addItemAt(index, list) {
   const item = createItem("new todo");
   list.splice(index, 0, item);
   saveState();
   render();
+  requestAnimationFrame(() => {
+    const added = listStage.querySelector(`[data-id="${item.id}"]`);
+    added?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(updateScrollFades, 260);
+  });
+}
+
+function deleteItem(item, parentList) {
+  const index = parentList.findIndex((candidate) => candidate.id === item.id);
+  if (index < 0) {
+    return;
+  }
+  parentList.splice(index, 1);
+  currentPath = currentPath.filter((id) => id !== item.id);
+  pendingDeleteId = null;
+  if (editingItemId === item.id) {
+    editingItemId = null;
+  }
+  clearPendingClick();
+  saveState();
+  render();
+}
+
+function resetDeleteIfPointerLeft(event) {
+  if (!pendingDeleteId) {
+    return;
+  }
+
+  const pendingTodo = [...listStage.querySelectorAll(".todo-item")].find((todo) => todo.dataset.id === pendingDeleteId);
+  if (!pendingTodo || pendingTodo.contains(event.target)) {
+    return;
+  }
+
+  pendingTodo.querySelector(".delete-action")?.classList.remove("confirm-delete");
+  if (document.activeElement === pendingTodo.querySelector(".delete-action")) {
+    document.activeElement.blur();
+  }
+  pendingDeleteId = null;
 }
 
 function beginPointer(event, item) {
@@ -400,12 +529,6 @@ function clearPointer() {
 }
 
 function registerItemClick(item) {
-  if (currentPath[currentPath.length - 1] === item.id) {
-    clearPendingClick();
-    goBack();
-    return;
-  }
-
   if (pendingClickItemId !== item.id) {
     clearPendingClick();
     pendingClickItemId = item.id;
@@ -427,7 +550,9 @@ function registerItemClick(item) {
     const count = clickCount;
     clearPendingClick();
     if (count === 1) {
-      openSublist(item);
+      if (hasSublist(item)) {
+        openSublist(item);
+      }
     } else if (count === 2) {
       toggleCompleted(item);
     }
@@ -444,17 +569,24 @@ function clearPendingClick() {
 function toggleCompleted(item) {
   item.completed = !item.completed;
   saveState();
-  render();
+
+  const todo = listStage.querySelector(`[data-id="${CSS.escape(item.id)}"]`);
+  if (!todo) {
+    render();
+    return;
+  }
+
+  todo.classList.toggle("completed", item.completed);
+  window.setTimeout(render, 380);
 }
 
 function createSublist(item) {
-  if (hasSublist(item)) {
-    return;
+  if (!hasSublist(item)) {
+    item.hasSublist = true;
+    item.children = [createItem("new todo")];
+    saveState();
   }
-  item.hasSublist = true;
-  item.children = [];
-  saveState();
-  currentPath.push(item.id);
+  focusPathItem(item);
   navDirection = "forward";
   render();
 }
@@ -464,23 +596,61 @@ function openSublist(item) {
     return;
   }
   item.children ||= [];
-  currentPath.push(item.id);
+  focusPathItem(item);
   navDirection = "forward";
   render();
 }
 
+function focusPathItem(item) {
+  const existingIndex = currentPath.indexOf(item.id);
+  if (existingIndex >= 0) {
+    currentPath = currentPath.slice(0, existingIndex + 1);
+    return;
+  }
+  currentPath.push(item.id);
+}
+
 function goBack() {
-  if (!currentPath.length) {
+  if (!currentPath.length || isNavigatingBack) {
     return;
   }
   clearPendingClick();
+  const closingSubspace = listStage.querySelector(`.subspace[data-depth="${currentPath.length}"]`);
+  if (!closingSubspace) {
+    finishBackNavigation();
+    return;
+  }
+
+  isNavigatingBack = true;
+  closingSubspace.classList.add("is-closing");
+  window.setTimeout(finishBackNavigation, BACK_ANIMATION_MS);
+}
+
+function finishBackNavigation() {
+  removeCurrentSublistIfEmpty();
   currentPath.pop();
   navDirection = "back";
+  isNavigatingBack = false;
   render();
 }
 
-function beginDrag(event, item) {
-  draggedId = item.id;
+function removeCurrentSublistIfEmpty() {
+  const parent = getCurrentParent();
+  if (!parent || parent.children?.length) {
+    return;
+  }
+
+  parent.hasSublist = false;
+  delete parent.children;
+  saveState();
+}
+
+function beginDrag(event, item, parentList, parentId, depth) {
+  if (depth !== currentPath.length) {
+    event.preventDefault();
+    return;
+  }
+  dragSource = { id: item.id, parentList, parentId };
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", item.id);
   event.currentTarget.classList.add("dragging");
@@ -488,7 +658,7 @@ function beginDrag(event, item) {
 }
 
 function handleDragOver(event) {
-  if (!draggedId) {
+  if (!dragSource) {
     return;
   }
   event.preventDefault();
@@ -500,23 +670,27 @@ function handleDragLeave(event) {
   event.currentTarget.classList.remove("drag-over");
 }
 
-function handleDrop(event, targetItem) {
+function handleDrop(event, targetItem, targetList, targetParentId) {
   event.preventDefault();
   event.currentTarget.classList.remove("drag-over");
 
-  const sourceId = event.dataTransfer.getData("text/plain") || draggedId;
+  const sourceId = event.dataTransfer.getData("text/plain") || dragSource?.id;
   if (!sourceId || sourceId === targetItem.id) {
     return;
   }
 
-  const list = getCurrentList();
-  const fromIndex = list.findIndex((item) => item.id === sourceId);
+  if (dragSource?.parentId !== targetParentId) {
+    return;
+  }
+
+  const list = targetList;
+  const fromIndex = dragSource.parentList.findIndex((item) => item.id === sourceId);
   const toIndex = list.findIndex((item) => item.id === targetItem.id);
   if (fromIndex < 0 || toIndex < 0) {
     return;
   }
 
-  const [moved] = list.splice(fromIndex, 1);
+  const [moved] = dragSource.parentList.splice(fromIndex, 1);
   list.splice(toIndex, 0, moved);
   saveState();
   render();
@@ -524,7 +698,7 @@ function handleDrop(event, targetItem) {
 
 function endDrag(event) {
   event.currentTarget.classList.remove("dragging", "drag-over");
-  draggedId = null;
+  dragSource = null;
 }
 
 function startTitleEdit() {
