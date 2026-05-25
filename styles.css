@@ -1,0 +1,467 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1012;
+  --panel: #1d1d1f;
+  --panel-soft: #25262a;
+  --text: #fafafa;
+  --muted: #8f98a3;
+  --line: rgba(255, 255, 255, 0.86);
+  --focus: #9ee7ff;
+  --rainbow: linear-gradient(
+    100deg,
+    #ff2f4f,
+    #ff9f1c,
+    #ffe45c,
+    #3ddc84,
+    #24c6dc,
+    #7b61ff,
+    #ff4fd8,
+    #ff2f4f
+  );
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--panel);
+  font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", "Trebuchet MS", system-ui, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.todo-board {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-height: 520px;
+  border-radius: 0;
+  padding: clamp(54px, 7vh, 78px) clamp(18px, 5vw, 72px) clamp(34px, 5vh, 56px);
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    var(--rainbow) border-box;
+  background-size: auto, 240% 240%;
+  border: 8px solid transparent;
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.72),
+    0 26px 60px rgba(0, 0, 0, 0.3);
+  animation: shimmer 8s linear infinite;
+  transition: border-width 180ms ease, padding-top 180ms ease, box-shadow 180ms ease;
+}
+
+.todo-board.editing-title {
+  border-width: 12px;
+  padding-top: clamp(62px, 8vh, 88px);
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.72),
+    0 0 44px rgba(126, 222, 255, 0.28),
+    0 26px 60px rgba(0, 0, 0, 0.3);
+}
+
+.board-title-wrap,
+.title-editor {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 5;
+  transform: translate(-50%, -1px);
+}
+
+.board-title,
+.title-editor input {
+  max-width: min(74vw, 720px);
+  min-width: 130px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text);
+  background: transparent;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(0, 0, 0, 0.38);
+  font-size: clamp(0.95rem, 1.55vw, 1.55rem);
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  padding: 4px 18px 7px;
+}
+
+.board-title {
+  cursor: text;
+}
+
+.board-title:focus-visible,
+.title-editor input:focus-visible,
+.todo-text:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.title-editor input {
+  width: min(74vw, 720px);
+  background: rgba(29, 29, 31, 0.28);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.list-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  perspective: 1200px;
+}
+
+.todo-list {
+  width: min(48rem, 88%);
+  max-height: 100%;
+  margin: 0;
+  padding: 0 10px;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.26) transparent;
+}
+
+.todo-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.todo-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+}
+
+.ancestor-list {
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.divider {
+  position: relative;
+  width: 42%;
+  min-width: 120px;
+  height: 22px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.static-divider {
+  pointer-events: none;
+  cursor: default;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  position: absolute;
+  width: min(100%, 190px);
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  transition: width 160ms ease, height 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.divider:hover::before,
+.divider:focus-visible::before,
+.divider:hover::after,
+.divider:focus-visible::after {
+  width: 20px;
+  height: 4px;
+  background: var(--text);
+}
+
+.static-divider::after {
+  display: none;
+}
+
+.static-divider:hover::before,
+.static-divider:focus-visible::before {
+  width: min(100%, 190px);
+  height: 2px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.divider:hover::after,
+.divider:focus-visible::after {
+  transform: rotate(90deg);
+}
+
+.divider:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.todo-row {
+  display: flex;
+  justify-content: center;
+  touch-action: none;
+}
+
+.todo-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: grab;
+  user-select: none;
+  transition: color 180ms ease, opacity 180ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.todo-item:active {
+  cursor: grabbing;
+}
+
+.todo-item.has-children {
+  cursor: pointer;
+}
+
+.todo-item.dragging {
+  opacity: 0.42;
+  transform: scale(0.97);
+}
+
+.todo-item.drag-over {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.todo-item.path-parent {
+  color: var(--text);
+}
+
+.todo-item.path-parent .todo-text::before {
+  content: "";
+  position: absolute;
+  left: -0.08em;
+  right: -0.08em;
+  bottom: -0.05em;
+  height: 0.07em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.todo-item.path-parent.completed .todo-text::before {
+  background: rgba(143, 152, 163, 0.7);
+}
+
+.todo-text {
+  position: relative;
+  display: inline-block;
+  min-width: 1.5ch;
+  max-width: min(78vw, 760px);
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: clamp(1.5rem, 3.25vw, 3rem);
+  line-height: 1.06;
+  text-align: center;
+  letter-spacing: 0;
+  border-radius: 8px;
+  padding: 0 4px 4px;
+}
+
+.todo-text::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0;
+  height: 0.1em;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateY(-50%);
+  transition: width 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.todo-item.completed {
+  color: var(--muted);
+}
+
+.todo-item.completed .todo-text::after {
+  width: 100%;
+}
+
+.child-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(0.68rem, 1.05vw, 0.86rem);
+  font-weight: 700;
+  transform: translateY(0.2em);
+}
+
+.child-badge.all-done {
+  color: var(--muted);
+}
+
+.child-badge svg {
+  width: 1.05em;
+  height: 1.05em;
+  stroke-width: 2.5;
+}
+
+.context-view {
+  transform: none;
+}
+
+.context-list {
+  width: min(34rem, 86%);
+  padding-top: 6px;
+  padding-bottom: 52px;
+}
+
+.context-list .divider {
+  height: 18px;
+}
+
+.context-list .context-parent .todo-item {
+  color: var(--text);
+}
+
+.context-list .context-parent .todo-text {
+  font-size: clamp(1.9rem, 3.55vw, 3.3rem);
+}
+
+.context-list .context-child .todo-text {
+  font-size: clamp(1.45rem, 2.75vw, 2.45rem);
+}
+
+.context-list .context-sibling .todo-item {
+  opacity: 0.58;
+}
+
+.context-list .context-sibling .todo-text {
+  font-size: clamp(1.65rem, 3.05vw, 2.85rem);
+}
+
+.context-list .context-sibling .todo-item.completed {
+  opacity: 0.5;
+}
+
+.list-view {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transform-origin: top center;
+  opacity: var(--view-opacity);
+  transform:
+    translateY(calc(var(--ancestor-shift) - var(--selected-offset)))
+    scale(var(--view-scale));
+  transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
+}
+
+.list-view[data-distance="0"] {
+  opacity: 1;
+}
+
+.list-view.nav-forward {
+  animation: growIn 320ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.list-view.nav-back {
+  animation: settleBack 260ms ease both;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 0 0, 0% 50%;
+  }
+  to {
+    background-position: 0 0, 200% 50%;
+  }
+}
+
+@keyframes growIn {
+  from {
+    opacity: 0;
+    transform: translateY(10vh) scale(0.66);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes settleBack {
+  from {
+    transform: translateY(-4vh) scale(1.08);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 700px) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    padding: 0;
+  }
+
+  .todo-board {
+    width: 100%;
+    height: 100vh;
+    min-height: 520px;
+    border-radius: 0;
+    padding-inline: 10px;
+  }
+
+  .todo-list {
+    width: 100%;
+  }
+
+  .todo-text {
+    font-size: clamp(1.35rem, 8vw, 2.4rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

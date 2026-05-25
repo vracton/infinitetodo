@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Infinite Todo</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell" aria-label="Infinite todo app">
+      <section class="todo-board" id="todoBoard">
+        <div class="board-title-wrap">
+          <button class="board-title" id="boardTitle" type="button" aria-label="Rename current list"></button>
+        </div>
+        <form class="title-editor" id="titleEditor" hidden>
+          <input id="titleInput" type="text" autocomplete="off" spellcheck="false" aria-label="List title">
+        </form>
+        <div class="viewport" id="viewport">
+          <div class="list-stage" id="listStage"></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
