@@ -20,6 +20,7 @@ let dragSource = null;
 let navDirection = "none";
 let isNavigatingBack = false;
 let pendingDeleteId = null;
+let pendingDeleteIsShift = false;
 let editingItemId = null;
 let editingItemIsNew = false;
 let pendingScrollDepth = null;
@@ -44,6 +45,14 @@ document.addEventListener("keydown", (event) => {
   const isEditingText = document.activeElement === titleInput || document.activeElement?.classList.contains("todo-edit-input");
   if (event.key === "Escape" && !isEditingText) {
     goBack();
+  }
+  if (event.key === "Shift") {
+    syncShiftDeleteHover(true);
+  }
+});
+document.addEventListener("keyup", (event) => {
+  if (event.key === "Shift") {
+    syncShiftDeleteHover(false);
   }
 });
 document.addEventListener("pointermove", resetDeleteIfPointerLeft);
@@ -366,11 +375,15 @@ function createTodoElement(item, depth, parentId, parentList) {
       return;
     }
     pendingDeleteId = item.id;
+    pendingDeleteIsShift = false;
     deleteAction.classList.add("confirm-delete");
   });
+  deleteAction.addEventListener("pointerenter", (event) => updateShiftDeleteConfirm(item.id, deleteAction, event.shiftKey));
+  deleteAction.addEventListener("pointermove", (event) => updateShiftDeleteConfirm(item.id, deleteAction, event.shiftKey));
   const resetDeleteConfirmation = () => {
     if (pendingDeleteId === item.id) {
       pendingDeleteId = null;
+      pendingDeleteIsShift = false;
       deleteAction.classList.remove("confirm-delete");
       deleteAction.blur();
     }
@@ -405,6 +418,37 @@ function createTodoElement(item, depth, parentId, parentList) {
   todo.addEventListener("dragend", endDrag);
 
   return todo;
+}
+
+function updateShiftDeleteConfirm(itemId, deleteAction, isShiftHeld) {
+  if (isShiftHeld) {
+    if (pendingDeleteId === itemId && !pendingDeleteIsShift) {
+      deleteAction.classList.add("confirm-delete");
+      return;
+    }
+    pendingDeleteId = itemId;
+    pendingDeleteIsShift = true;
+    deleteAction.classList.add("confirm-delete");
+    return;
+  }
+
+  if (pendingDeleteIsShift && pendingDeleteId === itemId) {
+    pendingDeleteId = null;
+    pendingDeleteIsShift = false;
+    deleteAction.classList.remove("confirm-delete");
+  }
+}
+
+function syncShiftDeleteHover(isShiftHeld) {
+  const hovered = document.querySelector(".delete-action:hover");
+  if (!hovered) {
+    return;
+  }
+  const todo = hovered.closest(".todo-item");
+  if (!todo?.dataset.id) {
+    return;
+  }
+  updateShiftDeleteConfirm(todo.dataset.id, hovered, isShiftHeld);
 }
 
 function createItemEditor(item) {
@@ -527,6 +571,7 @@ function deleteItem(item, parentList) {
   parentList.splice(index, 1);
   currentPath = currentPath.filter((id) => id !== item.id);
   pendingDeleteId = null;
+  pendingDeleteIsShift = false;
   if (editingItemId === item.id) {
     editingItemId = null;
     editingItemIsNew = false;
@@ -553,6 +598,7 @@ function resetDeleteIfPointerLeft(event) {
     document.activeElement.blur();
   }
   pendingDeleteId = null;
+  pendingDeleteIsShift = false;
 }
 
 function beginPointer(event, item) {
