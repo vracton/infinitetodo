@@ -558,7 +558,7 @@ function endPointer(event, item) {
   const wasDragged = pointerState.dragged;
   clearPointer();
   if (!wasDragged) {
-    registerItemClick(item);
+    registerItemClick(item, event);
   }
 }
 
@@ -566,23 +566,20 @@ function clearPointer() {
   pointerState = null;
 }
 
-function registerItemClick(item) {
+function registerItemClick(item, event) {
   if (pendingClickItemId !== item.id) {
     clearPendingClick();
     pendingClickItemId = item.id;
   }
 
-  clickCount += 1;
-  clearTimeout(clickTimer);
-
-  if (clickCount >= 3) {
-    const count = clickCount;
+  if (event?.shiftKey) {
     clearPendingClick();
-    if (count >= 3) {
-      createSublist(item);
-    }
+    createSublist(item);
     return;
   }
+
+  clickCount += 1;
+  clearTimeout(clickTimer);
 
   clickTimer = window.setTimeout(() => {
     const count = clickCount;
