@@ -661,7 +661,9 @@ function collectAncestors(items, targetId, path) {
 function createSublist(item) {
   if (!hasSublist(item)) {
     item.hasSublist = true;
-    item.children = [createItem("new todo")];
+    const newItem = createItem("");
+    item.children = [newItem];
+    editingItemId = newItem.id;
     saveState();
   }
   focusPathItem(item);
