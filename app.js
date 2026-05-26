@@ -182,8 +182,11 @@ function createStageView() {
 function renderList(items, depth, parentId) {
   const list = document.createElement("ol");
   list.className = "todo-list";
+  const focusDistance = Math.max(0, currentPath.length - depth);
   list.dataset.depth = String(depth);
-  list.dataset.focusDistance = String(Math.max(0, currentPath.length - depth));
+  list.dataset.focusDistance = String(focusDistance);
+  list.style.setProperty("--depth", depth);
+  list.style.setProperty("--focus-distance", focusDistance);
   list.dataset.parentId = parentId || "";
   list.appendChild(createDivider(0, items, depth));
 
@@ -209,8 +212,11 @@ function renderFocusedList(items, depth, parentId) {
 
   const list = document.createElement("ol");
   list.className = "todo-list focus-list";
+  const focusDistance = Math.max(0, currentPath.length - depth);
   list.dataset.depth = String(depth);
-  list.dataset.focusDistance = String(Math.max(0, currentPath.length - depth));
+  list.dataset.focusDistance = String(focusDistance);
+  list.style.setProperty("--depth", depth);
+  list.style.setProperty("--focus-distance", focusDistance);
   list.dataset.parentId = parentId || "";
 
   items.slice(0, selectedIndex).forEach((item) => {

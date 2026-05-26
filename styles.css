@@ -9,6 +9,20 @@
   --focus: #9ee7ff;
   --frame-rest: clamp(22px, 1.8vh, 24px);
   --frame-expanded: clamp(24px, 3.4vh, 34px);
+  --todo-text-min-start: 1.25rem;
+  --todo-text-min-step: 0.11rem;
+  --todo-text-min-floor: 0.85rem;
+  --todo-text-vw-start: 2.45vw;
+  --todo-text-vw-step: 0.22vw;
+  --todo-text-max-start: 2.3rem;
+  --todo-text-max-step: 0.16rem;
+  --todo-text-max-floor: 1.35rem;
+  --list-width-start: 34rem;
+  --list-width-step: 2rem;
+  --list-width-min: 20rem;
+  --list-width-vw: 88vw;
+  --focus-blur-step: 1.2px;
+  --focus-blur-max: 4px;
   --rainbow: linear-gradient(
     100deg,
     #ff2f4f,
@@ -214,7 +228,12 @@ input {
 }
 
 .todo-list {
-  width: min(34rem, 88%);
+  --focus-distance: 0;
+  --depth: 0;
+  width: min(
+    var(--list-width-vw),
+    max(var(--list-width-min), calc(var(--list-width-start) - (var(--depth) * var(--list-width-step))))
+  );
   margin: 0;
   padding: 0 10px;
   list-style: none;
@@ -236,10 +255,13 @@ input {
 
 .divider > span {
   position: absolute;
+  left: 50%;
+  top: 50%;
   width: min(100%, 190px);
   height: 2px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
+  transform: translate(-50%, -50%);
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
@@ -287,14 +309,14 @@ input {
 .divider:hover > span,
 .divider:focus-visible > span {
   opacity: 0.28;
-  transform: scaleX(0.72);
+  transform: translate(-50%, -50%) scaleX(0.72);
 }
 
 .static-divider > span,
 .static-divider:hover > span,
 .static-divider:focus-visible > span {
   opacity: 1;
-  transform: none;
+  transform: translate(-50%, -50%);
 }
 
 .divider:focus-visible {
@@ -311,6 +333,7 @@ input {
 
 .todo-item {
   --control-size: clamp(1.35rem, 2vw, 1.65rem);
+  --depth: 0;
   position: relative;
   display: inline-grid;
   place-items: center;
@@ -370,7 +393,11 @@ input {
   max-width: min(78vw, 760px);
   overflow-wrap: anywhere;
   color: inherit;
-  font-size: clamp(1.5rem, 3.25vw, 3rem);
+  font-size: clamp(
+    max(var(--todo-text-min-floor), calc(var(--todo-text-min-start) - (var(--depth, 0) * var(--todo-text-min-step)))),
+    calc(var(--todo-text-vw-start) - (var(--depth, 0) * var(--todo-text-vw-step))),
+    max(var(--todo-text-max-floor), calc(var(--todo-text-max-start) - (var(--depth, 0) * var(--todo-text-max-step))))
+  );
   line-height: 1.06;
   text-align: center;
   letter-spacing: 0;
@@ -406,46 +433,13 @@ input {
   transform: translateY(-50%);
 }
 
-.todo-list[data-focus-distance="1"] > .todo-row > .todo-item,
-.todo-list[data-focus-distance="1"] > .divider {
-  filter: blur(1px);
-}
-
-.todo-list[data-focus-distance="2"] > .todo-row > .todo-item,
-.todo-list[data-focus-distance="2"] > .divider {
-  filter: blur(2.4px);
-}
-
-.todo-list[data-focus-distance="3"] > .todo-row > .todo-item,
-.todo-list[data-focus-distance="3"] > .divider,
-.todo-list[data-focus-distance="4"] > .todo-row > .todo-item,
-.todo-list[data-focus-distance="4"] > .divider {
-  filter: blur(4px);
+.todo-list > .todo-row > .todo-item,
+.todo-list > .divider {
+  filter: blur(clamp(0px, calc(var(--focus-distance) * var(--focus-blur-step)), var(--focus-blur-max)));
 }
 
 .focus-list[data-depth="0"] {
   width: min(42rem, 92%);
-}
-
-.todo-list[data-depth="0"] > .todo-row .todo-text,
-.todo-list[data-depth="0"] > .todo-row .todo-edit-input {
-  /* font-size: clamp(1.8rem, 4vw, 3.6rem); */
-  font-size: clamp(1.25rem, 2.45vw, 2.3rem);
-}
-
-.todo-list[data-depth="1"] > .todo-row .todo-text,
-.todo-list[data-depth="1"] > .todo-row .todo-edit-input {
-  font-size: clamp(1.18rem, 2.25vw, 2.1rem);
-}
-
-.todo-list[data-depth="2"] > .todo-row .todo-text,
-.todo-list[data-depth="2"] > .todo-row .todo-edit-input {
-  font-size: clamp(1.05rem, 2.05vw, 1.95rem);
-}
-
-.todo-list[data-depth="3"] > .todo-row .todo-text,
-.todo-list[data-depth="3"] > .todo-row .todo-edit-input {
-  font-size: clamp(0.92rem, 1.8vw, 1.8rem);
 }
 
 .focus-list > .context-sibling .todo-item {
@@ -471,13 +465,8 @@ input {
 }
 
 .subspace > .todo-list {
-  width: min(28rem, 86%);
   margin: 0 auto;
   padding-bottom: 0;
-}
-
-.subspace .subspace > .todo-list {
-  width: min(26rem, 84%);
 }
 
 .todo-text::after {
