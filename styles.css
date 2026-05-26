@@ -377,6 +377,10 @@ input {
   cursor: pointer;
 }
 
+.shift-sublist .todo-item:hover {
+  cursor: crosshair;
+}
+
 .todo-item.dragging {
   opacity: 0.42;
   transform: scale(0.97);

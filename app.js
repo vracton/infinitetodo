@@ -47,11 +47,13 @@ document.addEventListener("keydown", (event) => {
     goBack();
   }
   if (event.key === "Shift") {
+    document.documentElement.classList.add("shift-sublist");
     syncShiftDeleteHover(true);
   }
 });
 document.addEventListener("keyup", (event) => {
   if (event.key === "Shift") {
+    document.documentElement.classList.remove("shift-sublist");
     syncShiftDeleteHover(false);
   }
 });
