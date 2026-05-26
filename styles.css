@@ -36,6 +36,13 @@
   );
   --grain: radial-gradient(rgba(255, 255, 255, 0.08) 0.6px, transparent 0.6px);
   --rainbow-spin-speed: 28s;
+  --spin-angle: 0deg;
+}
+
+@property --spin-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
 }
 
 * {
@@ -77,33 +84,46 @@ input {
 }
 
 .todo-board {
+  --frame-padding: var(--frame-rest);
   --frame: var(--frame-rest);
+  --frame-radius: 8px;
   position: relative;
   width: 100vw;
   height: 100vh;
   min-height: 520px;
   border-radius: 0;
-  padding: var(--frame);
+  padding: var(--frame-padding);
   background: transparent;
   isolation: isolate;
   border: 0;
   box-shadow:
     0 26px 60px rgba(0, 0, 0, 0.3);
   overflow: hidden;
-  transition: padding 180ms ease, box-shadow 180ms ease;
+  transition: box-shadow 180ms ease;
 }
 
 .todo-board::after {
   content: "";
   position: absolute;
-  inset: -60%;
+  inset: 0;
   z-index: 0;
-  background-image: var(--rainbow-conic), var(--grain);
+  border-radius: 0;
+  background-image: conic-gradient(
+      from var(--spin-angle) at 50% 50%,
+      #ff3b5b 0deg,
+      #ff8a3d 50deg,
+      #ffd977 110deg,
+      #7ae98e 170deg,
+      #36c7dc 230deg,
+      #5e6dff 290deg,
+      #ff6ad5 350deg,
+      #ff3b5b 360deg
+    ),
+    var(--grain);
   background-size: cover, 3px 3px;
   background-position: center, 0 0;
   background-repeat: no-repeat, repeat;
-  transform-origin: 50% 50%;
-  transform: scale(1.7);
+  pointer-events: none;
   animation: spinRainbow var(--rainbow-spin-speed) linear infinite;
 }
 
@@ -112,17 +132,18 @@ input {
   position: absolute;
   inset: var(--frame);
   z-index: 1;
-  border-radius: 12px;
+  border-radius: var(--frame-radius);
   background: var(--panel);
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.72);
   pointer-events: none;
-  transition: inset 180ms ease;
+  transition: inset 180ms ease, border-radius 180ms ease;
 }
 
 .todo-board:has(.board-title:hover),
 .todo-board:has(.board-title:focus-visible),
 .todo-board.editing-title {
   --frame: var(--frame-expanded);
+  --frame-radius: 6px;
   box-shadow: 0 26px 60px rgba(0, 0, 0, 0.3);
 }
 
@@ -132,7 +153,7 @@ input {
   top: 0;
   left: 50%;
   z-index: 6;
-  height: var(--frame);
+  height: var(--frame-padding);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -202,34 +223,6 @@ input {
   width: 100%;
   height: 100%;
   overflow: hidden;
-}
-
-.viewport::before,
-.viewport::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 4;
-  height: clamp(70px, 13vh, 160px);
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 180ms ease;
-}
-
-.viewport::before {
-  top: 0;
-  background: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.86) 34%, rgba(0, 0, 0, 0) 100%);
-}
-
-.viewport::after {
-  bottom: 0;
-  background: linear-gradient(0deg, #000 0%, rgba(0, 0, 0, 0.86) 34%, rgba(0, 0, 0, 0) 100%);
-}
-
-.viewport.at-scroll-top::before,
-.viewport.at-scroll-bottom::after {
-  opacity: 0;
 }
 
 .list-stage {
@@ -628,10 +621,10 @@ input {
 
 @keyframes spinRainbow {
   from {
-    transform: rotate(0deg);
+    --spin-angle: 0deg;
   }
   to {
-    transform: rotate(360deg);
+    --spin-angle: 360deg;
   }
 }
 
