@@ -576,7 +576,10 @@ function clearPendingClick() {
 function toggleCompleted(item) {
   item.completed = !item.completed;
   saveState();
+  updateCompletionUI(item);
+}
 
+function updateCompletionUI(item) {
   const todo = listStage.querySelector(`[data-id="${CSS.escape(item.id)}"]`);
   if (!todo) {
     render();
@@ -584,7 +587,47 @@ function toggleCompleted(item) {
   }
 
   todo.classList.toggle("completed", item.completed);
-  window.setTimeout(render, 380);
+  updateBadgeState(item);
+
+  const ancestors = findItemAncestors(item.id);
+  ancestors.forEach(updateBadgeState);
+}
+
+function updateBadgeState(item) {
+  if (!hasSublist(item)) {
+    return;
+  }
+
+  const todo = listStage.querySelector(`[data-id="${CSS.escape(item.id)}"]`);
+  if (!todo) {
+    return;
+  }
+
+  const badge = todo.querySelector(".child-badge");
+  if (!badge) {
+    return;
+  }
+
+  badge.classList.toggle("all-done", allDescendantsComplete(item));
+}
+
+function findItemAncestors(targetId) {
+  const path = [];
+  collectAncestors(state.items, targetId, path);
+  return path;
+}
+
+function collectAncestors(items, targetId, path) {
+  for (const item of items) {
+    if (item.id === targetId) {
+      return true;
+    }
+    if (Array.isArray(item.children) && collectAncestors(item.children, targetId, path)) {
+      path.push(item);
+      return true;
+    }
+  }
+  return false;
 }
 
 function createSublist(item) {
