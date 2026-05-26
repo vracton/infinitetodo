@@ -452,8 +452,9 @@ function cancelItemEdit() {
 }
 
 function addItemAt(index, list) {
-  const item = createItem("new todo");
+  const item = createItem("");
   list.splice(index, 0, item);
+  editingItemId = item.id;
   saveState();
   render();
   requestAnimationFrame(() => {
