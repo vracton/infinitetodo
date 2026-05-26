@@ -21,6 +21,7 @@ let navDirection = "none";
 let isNavigatingBack = false;
 let pendingDeleteId = null;
 let editingItemId = null;
+let editingItemIsNew = false;
 let pendingScrollDepth = null;
 
 render();
@@ -419,15 +420,15 @@ function createItemEditor(item) {
     if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      finishItemEdit(item, input.value);
+      finishItemEdit(item, input.value, { deleteIfEmpty: true });
     }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      cancelItemEdit();
+      handleItemEditCancel(item, input.value);
     }
   });
-  input.addEventListener("blur", () => finishItemEdit(item, input.value));
+  input.addEventListener("blur", () => handleItemEditCancel(item, input.value));
 
   input.addEventListener("focus", () => {
     listStage.scrollTop = preservedScrollTop;
@@ -446,17 +447,27 @@ function startItemEdit(item) {
   clearPendingClick();
   pendingDeleteId = null;
   editingItemId = item.id;
+  editingItemIsNew = false;
   document.documentElement.classList.add("editing-item");
   document.body.classList.add("editing-item");
   render();
 }
 
-function finishItemEdit(item, value) {
+function finishItemEdit(item, value, options = {}) {
   if (editingItemId !== item.id) {
     return;
   }
-  item.text = value.trim() || "untitled";
+  const trimmed = value.trim();
+  if (trimmed === "" && options.deleteIfEmpty) {
+    const parentList = findParentList(item.id);
+    if (parentList) {
+      deleteItem(item, parentList);
+      return;
+    }
+  }
+  item.text = trimmed || "untitled";
   editingItemId = null;
+  editingItemIsNew = false;
   document.documentElement.classList.remove("editing-item");
   document.body.classList.remove("editing-item");
   saveState();
@@ -468,15 +479,28 @@ function cancelItemEdit() {
     return;
   }
   editingItemId = null;
+  editingItemIsNew = false;
   document.documentElement.classList.remove("editing-item");
   document.body.classList.remove("editing-item");
   render();
+}
+
+function handleItemEditCancel(item, value) {
+  if (editingItemIsNew && value.trim() === "") {
+    const parentList = findParentList(item.id);
+    if (parentList) {
+      deleteItem(item, parentList);
+      return;
+    }
+  }
+  cancelItemEdit();
 }
 
 function addItemAt(index, list) {
   const item = createItem("");
   list.splice(index, 0, item);
   editingItemId = item.id;
+  editingItemIsNew = true;
   saveState();
   render();
   requestAnimationFrame(() => {
@@ -505,6 +529,9 @@ function deleteItem(item, parentList) {
   pendingDeleteId = null;
   if (editingItemId === item.id) {
     editingItemId = null;
+    editingItemIsNew = false;
+    document.documentElement.classList.remove("editing-item");
+    document.body.classList.remove("editing-item");
   }
   clearPendingClick();
   saveState();
@@ -658,12 +685,28 @@ function collectAncestors(items, targetId, path) {
   return false;
 }
 
+function findParentList(targetId, items = state.items) {
+  for (const item of items) {
+    if (item.id === targetId) {
+      return items;
+    }
+    if (Array.isArray(item.children)) {
+      const found = findParentList(targetId, item.children);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
 function createSublist(item) {
   if (!hasSublist(item)) {
     item.hasSublist = true;
     const newItem = createItem("");
     item.children = [newItem];
     editingItemId = newItem.id;
+    editingItemIsNew = true;
     saveState();
   }
   focusPathItem(item);
