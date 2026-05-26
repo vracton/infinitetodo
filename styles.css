@@ -23,17 +23,19 @@
   --list-width-vw: 88vw;
   --focus-blur-step: 1.2px;
   --focus-blur-max: 4px;
-  --rainbow: linear-gradient(
-    100deg,
-    #ff2f4f,
-    #ff9f1c,
-    #ffe45c,
-    #3ddc84,
-    #24c6dc,
-    #7b61ff,
-    #ff4fd8,
-    #ff2f4f
+  --rainbow-conic: conic-gradient(
+    from 0deg at 50% 50%,
+    #ff3b5b 0deg,
+    #ff8a3d 50deg,
+    #ffd977 110deg,
+    #7ae98e 170deg,
+    #36c7dc 230deg,
+    #5e6dff 290deg,
+    #ff6ad5 350deg,
+    #ff3b5b 360deg
   );
+  --grain: radial-gradient(rgba(255, 255, 255, 0.08) 0.6px, transparent 0.6px);
+  --rainbow-spin-speed: 28s;
 }
 
 * {
@@ -77,21 +79,34 @@ input {
   min-height: 520px;
   border-radius: 0;
   padding: var(--frame);
-  background-image: var(--rainbow);
-  background-size: 260% 260%;
+  background: transparent;
+  isolation: isolate;
   border: 0;
   box-shadow:
     0 26px 60px rgba(0, 0, 0, 0.3);
   overflow: hidden;
-  animation: shimmer 8s linear infinite;
   transition: padding 180ms ease, box-shadow 180ms ease;
+}
+
+.todo-board::after {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  z-index: 0;
+  background-image: var(--rainbow-conic), var(--grain);
+  background-size: cover, 3px 3px;
+  background-position: center, 0 0;
+  background-repeat: no-repeat, repeat;
+  transform-origin: 50% 50%;
+  transform: scale(1.7);
+  animation: spinRainbow var(--rainbow-spin-speed) linear infinite;
 }
 
 .todo-board::before {
   content: "";
   position: absolute;
   inset: var(--frame);
-  z-index: 0;
+  z-index: 1;
   border-radius: 12px;
   background: var(--panel);
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.72);
@@ -178,7 +193,7 @@ input {
 
 .viewport {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -602,12 +617,12 @@ input {
   animation: cameraStepBack 220ms ease both;
 }
 
-@keyframes shimmer {
+@keyframes spinRainbow {
   from {
-    background-position: 0% 50%;
+    transform: rotate(0deg);
   }
   to {
-    background-position: 200% 50%;
+    transform: rotate(360deg);
   }
 }
 
