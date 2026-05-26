@@ -21,6 +21,7 @@ let navDirection = "none";
 let isNavigatingBack = false;
 let pendingDeleteId = null;
 let editingItemId = null;
+let pendingScrollDepth = null;
 
 render();
 
@@ -125,7 +126,16 @@ function render() {
   boardTitle.textContent = getCurrentTitle();
   board.dataset.depth = currentPath.length;
   listStage.replaceChildren(createStageView());
-  requestAnimationFrame(updateScrollFades);
+  requestAnimationFrame(() => {
+    if (pendingScrollDepth !== null) {
+      const target = listStage.querySelector(`.subspace[data-depth="${pendingScrollDepth}"]`);
+      if (target) {
+        scrollListStageToElement(target);
+      }
+      pendingScrollDepth = null;
+    }
+    updateScrollFades();
+  });
 
   if (window.lucide) {
     window.lucide.createIcons();
@@ -401,6 +411,7 @@ function createItemEditor(item) {
   input.className = "todo-edit-input";
   input.type = "text";
   input.value = item.text || "";
+  const preservedScrollTop = listStage.scrollTop;
   input.setAttribute("aria-label", "Todo text");
   input.addEventListener("pointerdown", (event) => event.stopPropagation());
   input.addEventListener("click", (event) => event.stopPropagation());
@@ -418,9 +429,14 @@ function createItemEditor(item) {
   });
   input.addEventListener("blur", () => finishItemEdit(item, input.value));
 
+  input.addEventListener("focus", () => {
+    listStage.scrollTop = preservedScrollTop;
+  });
+
   requestAnimationFrame(() => {
     input.focus();
     input.select();
+    listStage.scrollTop = preservedScrollTop;
   });
 
   return input;
@@ -430,6 +446,8 @@ function startItemEdit(item) {
   clearPendingClick();
   pendingDeleteId = null;
   editingItemId = item.id;
+  document.documentElement.classList.add("editing-item");
+  document.body.classList.add("editing-item");
   render();
 }
 
@@ -439,6 +457,8 @@ function finishItemEdit(item, value) {
   }
   item.text = value.trim() || "untitled";
   editingItemId = null;
+  document.documentElement.classList.remove("editing-item");
+  document.body.classList.remove("editing-item");
   saveState();
   render();
 }
@@ -448,6 +468,8 @@ function cancelItemEdit() {
     return;
   }
   editingItemId = null;
+  document.documentElement.classList.remove("editing-item");
+  document.body.classList.remove("editing-item");
   render();
 }
 
@@ -459,7 +481,16 @@ function addItemAt(index, list) {
   render();
   requestAnimationFrame(() => {
     const added = listStage.querySelector(`[data-id="${item.id}"]`);
-    added?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (added) {
+      const listRect = listStage.getBoundingClientRect();
+      const itemRect = added.getBoundingClientRect();
+      const offset = itemRect.top - listRect.top - listStage.clientHeight / 2 + itemRect.height / 2;
+      const nextScrollTop = Math.max(
+        0,
+        Math.min(listStage.scrollHeight - listStage.clientHeight, listStage.scrollTop + offset)
+      );
+      listStage.scrollTo({ top: nextScrollTop, behavior: "smooth" });
+    }
     window.setTimeout(updateScrollFades, 260);
   });
 }
@@ -637,6 +668,7 @@ function createSublist(item) {
     saveState();
   }
   focusPathItem(item);
+  pendingScrollDepth = currentPath.length;
   navDirection = "forward";
   render();
 }
@@ -647,8 +679,20 @@ function openSublist(item) {
   }
   item.children ||= [];
   focusPathItem(item);
+  pendingScrollDepth = currentPath.length;
   navDirection = "forward";
   render();
+}
+
+function scrollListStageToElement(element) {
+  const listRect = listStage.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const offset = elementRect.top - listRect.top - listStage.clientHeight / 2 + elementRect.height / 2;
+  const nextScrollTop = Math.max(
+    0,
+    Math.min(listStage.scrollHeight - listStage.clientHeight, listStage.scrollTop + offset)
+  );
+  listStage.scrollTo({ top: nextScrollTop, behavior: "smooth" });
 }
 
 function focusPathItem(item) {

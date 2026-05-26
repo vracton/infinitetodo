@@ -58,6 +58,11 @@ body {
   font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", "Trebuchet MS", system-ui, sans-serif;
 }
 
+html.editing-item,
+body.editing-item {
+  overflow: hidden;
+}
+
 button,
 input {
   appearance: none;
