@@ -420,6 +420,9 @@ function createTodoElement(item, depth, parentId, parentList) {
   todo.addEventListener("pointerup", (event) => endPointer(event, item));
   todo.addEventListener("pointercancel", clearPointer);
   todo.addEventListener("dragstart", (event) => beginDrag(event, item, parentList, parentId, depth));
+  todo.addEventListener("dragover", (event) => handleItemDragOver(event, item, parentList, parentId, depth));
+  todo.addEventListener("dragleave", handleItemDragLeave);
+  todo.addEventListener("drop", (event) => handleItemDrop(event, item, parentList, parentId, depth));
   todo.addEventListener("dragend", endDrag);
 
   if (lastMovedItemId === item.id) {
@@ -913,6 +916,50 @@ function handleDividerDrop(event, targetIndex, targetList, targetParentId, targe
   renderWithMoveAnimation();
 }
 
+function handleItemDragOver(event, targetItem, targetList, targetParentId, targetDepth) {
+  if (!isValidItemDropTarget(targetItem, targetList, targetParentId, targetDepth)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  setActiveSublistDropTarget(event.currentTarget);
+}
+
+function handleItemDragLeave(event) {
+  if (event.currentTarget.contains(event.relatedTarget)) {
+    return;
+  }
+  event.currentTarget.classList.remove("sublist-drop-target");
+}
+
+function handleItemDrop(event, targetItem, targetList, targetParentId, targetDepth) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.classList.remove("sublist-drop-target");
+
+  const sourceId = event.dataTransfer.getData("text/plain") || dragSource?.id;
+  if (!sourceId || !isValidItemDropTarget(targetItem, targetList, targetParentId, targetDepth)) {
+    return;
+  }
+
+  const fromIndex = dragSource.parentList.findIndex((item) => item.id === sourceId);
+  if (fromIndex < 0) {
+    return;
+  }
+
+  const [moved] = dragSource.parentList.splice(fromIndex, 1);
+  targetItem.hasSublist = true;
+  targetItem.children ||= [];
+  targetItem.children.push(moved);
+  lastMovedItemId = moved.id;
+  saveState();
+
+  focusPathItem(targetItem);
+  pendingScrollDepth = currentPath.length;
+  navDirection = "forward";
+  renderWithMoveAnimation();
+}
+
 function isValidDividerDropTarget(targetList, targetParentId, targetDepth) {
   return Boolean(dragSource)
     && dragSource.parentList === targetList
@@ -921,13 +968,33 @@ function isValidDividerDropTarget(targetList, targetParentId, targetDepth) {
     && targetDepth === currentPath.length;
 }
 
+function isValidItemDropTarget(targetItem, targetList, targetParentId, targetDepth) {
+  return isValidDividerDropTarget(targetList, targetParentId, targetDepth)
+    && dragSource.id !== targetItem.id;
+}
+
 function setActiveDropDivider(divider) {
   document.querySelectorAll(".divider.drop-target").forEach((target) => {
     if (target !== divider) {
       target.classList.remove("drop-target");
     }
   });
+  clearSublistDropTargets();
   divider.classList.add("drop-target");
+}
+
+function setActiveSublistDropTarget(todo) {
+  document.querySelectorAll(".todo-item.sublist-drop-target").forEach((target) => {
+    if (target !== todo) {
+      target.classList.remove("sublist-drop-target");
+    }
+  });
+  document.querySelectorAll(".divider.drop-target").forEach((divider) => divider.classList.remove("drop-target"));
+  todo.classList.add("sublist-drop-target");
+}
+
+function clearSublistDropTargets() {
+  document.querySelectorAll(".todo-item.sublist-drop-target").forEach((target) => target.classList.remove("sublist-drop-target"));
 }
 
 function renderWithMoveAnimation() {
@@ -943,6 +1010,7 @@ function endDrag(event) {
   event.currentTarget.classList.remove("dragging");
   document.documentElement.classList.remove("dragging-todo");
   document.querySelectorAll(".divider.drop-target").forEach((divider) => divider.classList.remove("drop-target"));
+  clearSublistDropTargets();
   removeDragPreview();
   dragSource = null;
 }

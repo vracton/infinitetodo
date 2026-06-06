@@ -34,6 +34,24 @@
     #ff6ad5 350deg,
     #ff3b5b 360deg
   );
+  --rainbow-stripe: linear-gradient(
+    90deg,
+    #ff3b5b 0%,
+    #ff8a3d 7%,
+    #ffd977 14%,
+    #7ae98e 21%,
+    #36c7dc 28%,
+    #5e6dff 35%,
+    #ff6ad5 42%,
+    #ff3b5b 50%,
+    #ff8a3d 57%,
+    #ffd977 64%,
+    #7ae98e 71%,
+    #36c7dc 78%,
+    #5e6dff 85%,
+    #ff6ad5 92%,
+    #ff3b5b 100%
+  );
   --grain: radial-gradient(rgba(255, 255, 255, 0.08) 0.6px, transparent 0.6px);
   --rainbow-spin-speed: 28s;
   --spin-angle: 0deg;
@@ -42,6 +60,12 @@
 @property --spin-angle {
   syntax: "<angle>";
   inherits: true;
+  initial-value: 0deg;
+}
+
+@property --item-drop-angle {
+  syntax: "<angle>";
+  inherits: false;
   initial-value: 0deg;
 }
 
@@ -378,18 +402,8 @@ input {
 .divider.drop-target > span {
   height: 5px;
   opacity: 1;
-  background-image: linear-gradient(
-    90deg,
-    #ff3b5b 0%,
-    #ff8a3d 14%,
-    #ffd977 28%,
-    #7ae98e 42%,
-    #36c7dc 56%,
-    #5e6dff 70%,
-    #ff6ad5 84%,
-    #ff3b5b 100%
-  );
-  background-size: 220% 100%;
+  background-image: var(--rainbow-stripe);
+  background-size: 200% 100%;
   box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08), 0 0 24px rgba(255, 106, 213, 0.26);
   transform: translate(-50%, -50%) scaleX(1.16);
   animation: rainbowSlide 2.4s linear infinite;
@@ -451,6 +465,40 @@ input {
 
 .todo-item.just-dropped {
   animation: dropSettle 220ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.todo-item.sublist-drop-target {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  transform: translateY(-1px) scale(1.025);
+  overflow: visible;
+}
+
+.todo-item.sublist-drop-target::before {
+  --item-drop-angle: 0deg;
+  content: "";
+  position: absolute;
+  inset: -7px;
+  padding: 3px;
+  border-radius: 14px;
+  background-image: conic-gradient(
+    from var(--item-drop-angle) at 50% 50%,
+    #ff3b5b 0deg,
+    #ff8a3d 50deg,
+    #ffd977 110deg,
+    #7ae98e 170deg,
+    #36c7dc 230deg,
+    #5e6dff 290deg,
+    #ff6ad5 350deg,
+    #ff3b5b 360deg
+  );
+  background-size: cover;
+  animation: spinItemDropColor 3.2s linear infinite;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
 }
 
 .drag-preview-wrap {
@@ -723,12 +771,21 @@ html.dragging-todo .todo-item .item-action,
   }
 }
 
+@keyframes spinItemDropColor {
+  from {
+    --item-drop-angle: 0deg;
+  }
+  to {
+    --item-drop-angle: 360deg;
+  }
+}
+
 @keyframes rainbowSlide {
   from {
     background-position: 0% 50%;
   }
   to {
-    background-position: 220% 50%;
+    background-position: -100% 50%;
   }
 }
 
