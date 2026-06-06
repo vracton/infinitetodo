@@ -24,6 +24,8 @@ let pendingDeleteIsShift = false;
 let editingItemId = null;
 let editingItemIsNew = false;
 let pendingScrollDepth = null;
+let lastMovedItemId = null;
+let dragPreview = null;
 
 render();
 
@@ -210,11 +212,11 @@ function renderList(items, depth, parentId) {
   list.style.setProperty("--depth", depth);
   list.style.setProperty("--focus-distance", focusDistance);
   list.dataset.parentId = parentId || "";
-  list.appendChild(createDivider(0, items, depth));
+  list.appendChild(createDivider(0, items, depth, parentId));
 
   items.forEach((item, index) => {
     list.appendChild(createTodoRow(item, depth, parentId, items));
-    list.appendChild(createDivider(index + 1, items, depth));
+    list.appendChild(createDivider(index + 1, items, depth, parentId));
   });
 
   return list;
@@ -275,7 +277,7 @@ function createTodoRow(item, depth, parentId, parentList, modifier) {
   return row;
 }
 
-function createDivider(index, list, depth) {
+function createDivider(index, list, depth, parentId) {
   const divider = document.createElement("button");
   divider.className = "divider";
   divider.type = "button";
@@ -283,6 +285,9 @@ function createDivider(index, list, depth) {
   divider.style.setProperty("--depth", depth);
   divider.appendChild(createDividerLine());
   divider.addEventListener("click", () => addItemAt(index, list));
+  divider.addEventListener("dragover", (event) => handleDividerDragOver(event, list, parentId, depth));
+  divider.addEventListener("dragleave", handleDividerDragLeave);
+  divider.addEventListener("drop", (event) => handleDividerDrop(event, index, list, parentId, depth));
   return divider;
 }
 
@@ -308,6 +313,7 @@ function createTodoElement(item, depth, parentId, parentList) {
   todo.draggable = canReorder;
   todo.dataset.id = item.id;
   todo.dataset.parentId = parentId || "";
+  todo.style.viewTransitionName = `todo-${item.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   todo.style.setProperty("--depth", depth);
   todo.tabIndex = 0;
   todo.setAttribute("role", "button");
@@ -414,10 +420,15 @@ function createTodoElement(item, depth, parentId, parentList) {
   todo.addEventListener("pointerup", (event) => endPointer(event, item));
   todo.addEventListener("pointercancel", clearPointer);
   todo.addEventListener("dragstart", (event) => beginDrag(event, item, parentList, parentId, depth));
-  todo.addEventListener("dragover", handleDragOver);
-  todo.addEventListener("dragleave", handleDragLeave);
-  todo.addEventListener("drop", (event) => handleDrop(event, item, parentList, parentId));
   todo.addEventListener("dragend", endDrag);
+
+  if (lastMovedItemId === item.id) {
+    todo.classList.add("just-dropped");
+    requestAnimationFrame(() => {
+      todo.classList.remove("just-dropped");
+      lastMovedItemId = null;
+    });
+  }
 
   return todo;
 }
@@ -834,55 +845,111 @@ function beginDrag(event, item, parentList, parentId, depth) {
     event.preventDefault();
     return;
   }
-  dragSource = { id: item.id, parentList, parentId };
+  dragSource = { id: item.id, parentList, parentId, depth };
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", item.id);
   event.currentTarget.classList.add("dragging");
+  document.documentElement.classList.add("dragging-todo");
+  setDragPreview(event, event.currentTarget);
   clearPendingClick();
 }
 
-function handleDragOver(event) {
-  if (!dragSource) {
+function setDragPreview(event, todo) {
+  removeDragPreview();
+
+  const preview = todo.cloneNode(true);
+  preview.classList.remove("dragging");
+  preview.classList.add("drag-preview");
+  preview.querySelectorAll(".item-action").forEach((button) => button.remove());
+
+  dragPreview = document.createElement("div");
+  dragPreview.className = "drag-preview-wrap";
+  dragPreview.appendChild(preview);
+  document.body.appendChild(dragPreview);
+
+  const rect = todo.getBoundingClientRect();
+  event.dataTransfer.setDragImage(dragPreview, rect.width / 2, rect.height / 2);
+}
+
+function handleDividerDragOver(event, targetList, targetParentId, targetDepth) {
+  if (!isValidDividerDropTarget(targetList, targetParentId, targetDepth)) {
     return;
   }
   event.preventDefault();
   event.dataTransfer.dropEffect = "move";
-  event.currentTarget.classList.add("drag-over");
+  setActiveDropDivider(event.currentTarget);
 }
 
-function handleDragLeave(event) {
-  event.currentTarget.classList.remove("drag-over");
+function handleDividerDragLeave(event) {
+  if (event.currentTarget.contains(event.relatedTarget)) {
+    return;
+  }
+  event.currentTarget.classList.remove("drop-target");
 }
 
-function handleDrop(event, targetItem, targetList, targetParentId) {
+function handleDividerDrop(event, targetIndex, targetList, targetParentId, targetDepth) {
   event.preventDefault();
-  event.currentTarget.classList.remove("drag-over");
+  event.currentTarget.classList.remove("drop-target");
 
   const sourceId = event.dataTransfer.getData("text/plain") || dragSource?.id;
-  if (!sourceId || sourceId === targetItem.id) {
+  if (!sourceId || !isValidDividerDropTarget(targetList, targetParentId, targetDepth)) {
     return;
   }
 
-  if (dragSource?.parentId !== targetParentId) {
-    return;
-  }
-
-  const list = targetList;
   const fromIndex = dragSource.parentList.findIndex((item) => item.id === sourceId);
-  const toIndex = list.findIndex((item) => item.id === targetItem.id);
-  if (fromIndex < 0 || toIndex < 0) {
+  if (fromIndex < 0) {
+    return;
+  }
+
+  const toIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  if (toIndex === fromIndex) {
     return;
   }
 
   const [moved] = dragSource.parentList.splice(fromIndex, 1);
-  list.splice(toIndex, 0, moved);
+  targetList.splice(toIndex, 0, moved);
+  lastMovedItemId = moved.id;
   saveState();
+  renderWithMoveAnimation();
+}
+
+function isValidDividerDropTarget(targetList, targetParentId, targetDepth) {
+  return Boolean(dragSource)
+    && dragSource.parentList === targetList
+    && dragSource.parentId === targetParentId
+    && dragSource.depth === targetDepth
+    && targetDepth === currentPath.length;
+}
+
+function setActiveDropDivider(divider) {
+  document.querySelectorAll(".divider.drop-target").forEach((target) => {
+    if (target !== divider) {
+      target.classList.remove("drop-target");
+    }
+  });
+  divider.classList.add("drop-target");
+}
+
+function renderWithMoveAnimation() {
+  const shouldReduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (!shouldReduceMotion && document.startViewTransition) {
+    document.startViewTransition(() => render());
+    return;
+  }
   render();
 }
 
 function endDrag(event) {
-  event.currentTarget.classList.remove("dragging", "drag-over");
+  event.currentTarget.classList.remove("dragging");
+  document.documentElement.classList.remove("dragging-todo");
+  document.querySelectorAll(".divider.drop-target").forEach((divider) => divider.classList.remove("drop-target"));
+  removeDragPreview();
   dragSource = null;
+}
+
+function removeDragPreview() {
+  dragPreview?.remove();
+  dragPreview = null;
 }
 
 function startTitleEdit() {

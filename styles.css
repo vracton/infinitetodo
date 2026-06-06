@@ -294,6 +294,7 @@ input {
   border: 0;
   background: transparent;
   cursor: pointer;
+  transition: height 170ms cubic-bezier(0.2, 0.75, 0.2, 1), width 170ms cubic-bezier(0.2, 0.75, 0.2, 1);
 }
 
 .divider > span {
@@ -305,7 +306,8 @@ input {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
   transform: translate(-50%, -50%);
-  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 170ms cubic-bezier(0.2, 0.75, 0.2, 1), height 170ms ease, background 170ms ease, box-shadow 170ms ease;
 }
 
 .static-divider {
@@ -353,6 +355,44 @@ input {
 .divider:focus-visible > span {
   opacity: 0.28;
   transform: translate(-50%, -50%) scaleX(0.72);
+}
+
+.dragging-todo .divider:not(.static-divider) {
+  cursor: copy;
+}
+
+.dragging-todo .divider:not(.static-divider):not(.drop-target) > span {
+  opacity: 0.42;
+}
+
+.divider.drop-target {
+  width: min(68%, 24rem);
+  height: 34px;
+}
+
+.divider.drop-target::before,
+.divider.drop-target::after {
+  opacity: 0;
+}
+
+.divider.drop-target > span {
+  height: 5px;
+  opacity: 1;
+  background-image: linear-gradient(
+    90deg,
+    #ff3b5b 0%,
+    #ff8a3d 14%,
+    #ffd977 28%,
+    #7ae98e 42%,
+    #36c7dc 56%,
+    #5e6dff 70%,
+    #ff6ad5 84%,
+    #ff3b5b 100%
+  );
+  background-size: 220% 100%;
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08), 0 0 24px rgba(255, 106, 213, 0.26);
+  transform: translate(-50%, -50%) scaleX(1.16);
+  animation: rainbowSlide 2.4s linear infinite;
 }
 
 .static-divider > span,
@@ -409,8 +449,25 @@ input {
   transform: scale(0.97);
 }
 
-.todo-item.drag-over {
-  background: rgba(255, 255, 255, 0.08);
+.todo-item.just-dropped {
+  animation: dropSettle 220ms cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.drag-preview-wrap {
+  position: fixed;
+  left: -10000px;
+  top: -10000px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.drag-preview {
+  opacity: 0.86;
+  transform: scale(0.98);
+}
+
+.drag-preview .item-action {
+  display: none;
 }
 
 .todo-item.path-parent {
@@ -577,6 +634,14 @@ input {
   opacity: 1;
 }
 
+html.dragging-todo .todo-item:hover .item-action,
+html.dragging-todo .todo-item .item-action,
+.todo-item.dragging .item-action {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.88);
+}
+
 .todo-item.completed .item-action,
 .todo-item.editing-item .item-action,
 .todo-list:not([data-focus-distance="0"]) > .todo-row .item-action {
@@ -658,6 +723,15 @@ input {
   }
 }
 
+@keyframes rainbowSlide {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 220% 50%;
+  }
+}
+
 @keyframes cameraStepIn {
   from {
     transform: scale(calc(var(--camera-scale) * 0.94));
@@ -700,6 +774,23 @@ input {
   }
 }
 
+@keyframes dropSettle {
+  0% {
+    transform: translateY(-6px) scale(0.98);
+  }
+  65% {
+    transform: translateY(1px) scale(1.015);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+::view-transition-group(*) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.2, 0.75, 0.2, 1);
+}
+
 @media (max-width: 700px) {
   body {
     overflow: auto;
@@ -734,5 +825,9 @@ input {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
+  }
+
+  ::view-transition-group(*) {
+    animation-duration: 1ms !important;
   }
 }
