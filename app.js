@@ -2,6 +2,7 @@ const STORAGE_KEY = "infinite-todo:data:v1";
 const CLICK_DELAY = 240;
 const DRAG_THRESHOLD = 6;
 const BACK_ANIMATION_MS = 150;
+const DRAG_ENTER_DELAY = 500;
 
 const board = document.querySelector("#todoBoard");
 const boardTitle = document.querySelector("#boardTitle");
@@ -24,8 +25,11 @@ let pendingDeleteIsShift = false;
 let editingItemId = null;
 let editingItemIsNew = false;
 let pendingScrollDepth = null;
+let pendingScrollItemId = null;
 let lastMovedItemId = null;
 let dragPreview = null;
+let dragEnterTimer = null;
+let dragEnterTargetId = null;
 
 render();
 
@@ -60,6 +64,7 @@ document.addEventListener("keyup", (event) => {
   }
 });
 document.addEventListener("pointermove", resetDeleteIfPointerLeft);
+document.addEventListener("dragend", () => finishDrag(Boolean(dragSource?.didDrop)));
 
 function loadState() {
   try {
@@ -147,6 +152,13 @@ function render() {
         scrollListStageToElement(target);
       }
       pendingScrollDepth = null;
+    }
+    if (pendingScrollItemId !== null) {
+      const target = listStage.querySelector(`[data-id="${CSS.escape(pendingScrollItemId)}"]`);
+      if (target) {
+        scrollListStageToElement(target);
+      }
+      pendingScrollItemId = null;
     }
     updateScrollFades();
   });
@@ -848,7 +860,16 @@ function beginDrag(event, item, parentList, parentId, depth) {
     event.preventDefault();
     return;
   }
-  dragSource = { id: item.id, parentList, parentId, depth };
+  dragSource = {
+    id: item.id,
+    item,
+    parentList,
+    parentId,
+    depth,
+    startPath: [...currentPath],
+    navigatedDuringDrag: false,
+    didDrop: false
+  };
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", item.id);
   event.currentTarget.classList.add("dragging");
@@ -880,6 +901,7 @@ function handleDividerDragOver(event, targetList, targetParentId, targetDepth) {
   }
   event.preventDefault();
   event.dataTransfer.dropEffect = "move";
+  clearDragEnterTimer();
   setActiveDropDivider(event.currentTarget);
 }
 
@@ -904,12 +926,19 @@ function handleDividerDrop(event, targetIndex, targetList, targetParentId, targe
     return;
   }
 
-  const toIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
-  if (toIndex === fromIndex) {
+  const moved = dragSource.parentList[fromIndex];
+  if (isListInsideItem(moved, targetList)) {
     return;
   }
 
-  const [moved] = dragSource.parentList.splice(fromIndex, 1);
+  const isSameList = dragSource.parentList === targetList;
+  const toIndex = isSameList && fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  if (isSameList && toIndex === fromIndex) {
+    return;
+  }
+
+  dragSource.didDrop = true;
+  dragSource.parentList.splice(fromIndex, 1);
   targetList.splice(toIndex, 0, moved);
   lastMovedItemId = moved.id;
   saveState();
@@ -923,6 +952,7 @@ function handleItemDragOver(event, targetItem, targetList, targetParentId, targe
   event.preventDefault();
   event.dataTransfer.dropEffect = "move";
   setActiveSublistDropTarget(event.currentTarget);
+  scheduleDragEnterSublist(targetItem);
 }
 
 function handleItemDragLeave(event) {
@@ -930,6 +960,7 @@ function handleItemDragLeave(event) {
     return;
   }
   event.currentTarget.classList.remove("sublist-drop-target");
+  clearDragEnterTimer(targetItem.id);
 }
 
 function handleItemDrop(event, targetItem, targetList, targetParentId, targetDepth) {
@@ -947,7 +978,13 @@ function handleItemDrop(event, targetItem, targetList, targetParentId, targetDep
     return;
   }
 
-  const [moved] = dragSource.parentList.splice(fromIndex, 1);
+  const moved = dragSource.parentList[fromIndex];
+  if (targetItem === moved || isItemInsideItem(moved, targetItem)) {
+    return;
+  }
+
+  dragSource.didDrop = true;
+  dragSource.parentList.splice(fromIndex, 1);
   targetItem.hasSublist = true;
   targetItem.children ||= [];
   targetItem.children.push(moved);
@@ -962,15 +999,60 @@ function handleItemDrop(event, targetItem, targetList, targetParentId, targetDep
 
 function isValidDividerDropTarget(targetList, targetParentId, targetDepth) {
   return Boolean(dragSource)
-    && dragSource.parentList === targetList
-    && dragSource.parentId === targetParentId
-    && dragSource.depth === targetDepth
+    && targetParentId !== dragSource.id
     && targetDepth === currentPath.length;
 }
 
 function isValidItemDropTarget(targetItem, targetList, targetParentId, targetDepth) {
   return isValidDividerDropTarget(targetList, targetParentId, targetDepth)
-    && dragSource.id !== targetItem.id;
+    && dragSource.id !== targetItem.id
+    && !isItemInsideItem(dragSource.item, targetItem);
+}
+
+function scheduleDragEnterSublist(item) {
+  if (!dragSource || dragEnterTargetId === item.id || !Array.isArray(item.children) || item.children.length === 0) {
+    return;
+  }
+
+  clearDragEnterTimer();
+  dragEnterTargetId = item.id;
+  dragEnterTimer = window.setTimeout(() => {
+    if (!dragSource || dragSource.didDrop || dragEnterTargetId !== item.id || !Array.isArray(item.children) || item.children.length === 0) {
+      return;
+    }
+
+    focusPathItem(item);
+    dragSource.navigatedDuringDrag = true;
+    pendingScrollDepth = currentPath.length;
+    navDirection = "forward";
+    clearSublistDropTargets();
+    renderWithMoveAnimation();
+    clearDragEnterTimer();
+  }, DRAG_ENTER_DELAY);
+}
+
+function clearDragEnterTimer(expectedTargetId) {
+  if (expectedTargetId && dragEnterTargetId !== expectedTargetId) {
+    return;
+  }
+
+  clearTimeout(dragEnterTimer);
+  dragEnterTimer = null;
+  dragEnterTargetId = null;
+}
+
+function isItemInsideItem(parent, candidate) {
+  if (!parent?.children?.length) {
+    return false;
+  }
+  return parent.children.some((child) => child === candidate || isItemInsideItem(child, candidate));
+}
+
+function isListInsideItem(parent, list) {
+  if (!parent?.children?.length) {
+    return false;
+  }
+  return parent.children === list || parent.children.some((child) => isListInsideItem(child, list));
 }
 
 function setActiveDropDivider(divider) {
@@ -1008,11 +1090,25 @@ function renderWithMoveAnimation() {
 
 function endDrag(event) {
   event.currentTarget.classList.remove("dragging");
+  finishDrag(Boolean(dragSource?.didDrop));
+}
+
+function finishDrag(dropSucceeded) {
+  const source = dragSource;
+  clearDragEnterTimer();
   document.documentElement.classList.remove("dragging-todo");
   document.querySelectorAll(".divider.drop-target").forEach((divider) => divider.classList.remove("drop-target"));
   clearSublistDropTargets();
   removeDragPreview();
   dragSource = null;
+
+  if (!dropSucceeded && source?.navigatedDuringDrag) {
+    currentPath = [...source.startPath];
+    pendingScrollDepth = currentPath.length || null;
+    pendingScrollItemId = source.id;
+    navDirection = "back";
+    renderWithMoveAnimation();
+  }
 }
 
 function removeDragPreview() {
