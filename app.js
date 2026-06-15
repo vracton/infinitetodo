@@ -3,6 +3,10 @@ const CLICK_DELAY = 240;
 const DRAG_THRESHOLD = 6;
 const BACK_ANIMATION_MS = 150;
 const DRAG_ENTER_DELAY = 500;
+const ICONS = {
+  pencil: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>`,
+  trash: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`
+};
 
 const board = document.querySelector("#todoBoard");
 const boardTitle = document.querySelector("#boardTitle");
@@ -32,6 +36,7 @@ let dragEnterTimer = null;
 let dragEnterTargetId = null;
 
 render();
+registerServiceWorker();
 
 boardTitle.addEventListener("click", startTitleEdit);
 titleEditor.addEventListener("submit", (event) => {
@@ -163,11 +168,17 @@ function render() {
     updateScrollFades();
   });
 
-  if (window.lucide) {
-    window.lucide.createIcons();
+  navDirection = "none";
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
   }
 
-  navDirection = "none";
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  });
 }
 
 function getCurrentList() {
@@ -374,7 +385,7 @@ function createTodoElement(item, depth, parentId, parentList) {
   editAction.className = "edit-action item-action";
   editAction.type = "button";
   editAction.setAttribute("aria-label", "Edit todo");
-  editAction.innerHTML = `<i data-lucide="pencil" aria-hidden="true"></i>`;
+  editAction.innerHTML = ICONS.pencil;
   editAction.addEventListener("pointerdown", (event) => event.stopPropagation());
   editAction.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -386,7 +397,7 @@ function createTodoElement(item, depth, parentId, parentList) {
   deleteAction.className = "delete-action item-action";
   deleteAction.type = "button";
   deleteAction.setAttribute("aria-label", "Delete todo");
-  deleteAction.innerHTML = `<i data-lucide="trash-2" aria-hidden="true"></i>`;
+  deleteAction.innerHTML = ICONS.trash;
   deleteAction.addEventListener("pointerdown", (event) => event.stopPropagation());
   deleteAction.addEventListener("click", (event) => {
     event.stopPropagation();
