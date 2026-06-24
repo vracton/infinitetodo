@@ -3,6 +3,7 @@ const CLICK_DELAY = 240;
 const DRAG_THRESHOLD = 6;
 const BACK_ANIMATION_MS = 150;
 const DRAG_ENTER_DELAY = 500;
+const DRAG_EXIT_DELAY = 720;
 const ICONS = {
   pencil: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil-icon lucide-pencil" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`,
   trash: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2-icon lucide-trash-2" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
@@ -15,6 +16,8 @@ const titleEditor = document.querySelector("#titleEditor");
 const titleInput = document.querySelector("#titleInput");
 const viewport = document.querySelector("#viewport");
 const listStage = document.querySelector("#listStage");
+const dragEdgeFade = createDragEdgeFade();
+const dragEdgeZone = createDragEdgeZone();
 
 let state = loadState();
 let currentPath = [];
@@ -35,9 +38,14 @@ let lastMovedItemId = null;
 let dragPreview = null;
 let dragEnterTimer = null;
 let dragEnterTargetId = null;
+let dragExitTimer = null;
+let isDragExitPending = false;
+let dragExitSource = null;
 
 render();
 registerServiceWorker();
+board.appendChild(dragEdgeFade);
+board.appendChild(dragEdgeZone);
 
 boardTitle.addEventListener("click", startTitleEdit);
 titleEditor.addEventListener("submit", (event) => {
@@ -72,6 +80,10 @@ document.addEventListener("keyup", (event) => {
 document.addEventListener("pointermove", resetDeleteIfPointerLeft);
 document.addEventListener("dragover", updateLinkCopyDragState);
 document.addEventListener("dragend", () => finishDrag(Boolean(dragSource?.didDrop)));
+
+dragEdgeZone.addEventListener("dragover", handleDragExitZoneOver);
+dragEdgeZone.addEventListener("dragleave", handleDragExitZoneLeave);
+dragEdgeZone.addEventListener("drop", handleDragExitZoneDrop);
 
 function loadState() {
   try {
@@ -211,6 +223,7 @@ function render() {
   boardTitle.textContent = getCurrentTitle();
   board.dataset.depth = currentPath.length;
   listStage.replaceChildren(createStageView());
+  updateDragEdgeZone();
   primeBadgePercents(previousBadgePercents);
   requestAnimationFrame(() => {
     animateBadgePercents();
@@ -332,6 +345,28 @@ function createStageView() {
 
   view.appendChild(currentPath.length ? renderFocusedList(state.items, 0, null) : renderList(state.items, 0, null));
   return view;
+}
+
+function createDragEdgeZone() {
+  const zone = document.createElement("div");
+  zone.className = "drag-edge-zone";
+  zone.setAttribute("aria-hidden", "true");
+  zone.innerHTML = `<span></span>`;
+  return zone;
+}
+
+function createDragEdgeFade() {
+  const fade = document.createElement("div");
+  fade.className = "drag-edge-fade";
+  fade.setAttribute("aria-hidden", "true");
+  return fade;
+}
+
+function updateDragEdgeZone() {
+  const canExit = canDragExitCurrentLevel();
+  dragEdgeFade.classList.toggle("available", canExit);
+  dragEdgeZone.classList.toggle("available", canExit);
+  dragEdgeZone.classList.toggle("is-pending", canExit && isDragExitPending && dragExitSource === "edge");
 }
 
 function renderList(items, depth, parentId, context = {}) {
@@ -1110,6 +1145,7 @@ function beginDrag(event, item, parentList, parentId, depth, context = {}) {
     depth,
     isLinkCopy: false,
     linkedRootTargetId: context.linkedRootTargetId || null,
+    linkedRootDepth: context.linkedRootTargetId ? context.linkedRootDepth ?? 0 : null,
     startPath: [...currentPath],
     navigatedDuringDrag: false,
     didDrop: false
@@ -1120,6 +1156,7 @@ function beginDrag(event, item, parentList, parentId, depth, context = {}) {
   event.currentTarget.classList.add("dragging");
   document.documentElement.classList.add("dragging-todo");
   document.documentElement.classList.toggle("link-copy-drag", event.ctrlKey);
+  updateDragEdgeZone();
   setDragPreview(event, event.currentTarget);
   clearPendingClick();
 }
@@ -1155,6 +1192,7 @@ function handleDividerDragOver(event, targetList, targetParentId, targetDepth, c
   event.preventDefault();
   updateLinkCopyDragState(event);
   event.dataTransfer.dropEffect = isLinkCopyDrop(event) ? "copy" : "move";
+  clearDragExitTimer();
   clearDragEnterTimer();
   setActiveDropDivider(event.currentTarget);
 }
@@ -1175,7 +1213,7 @@ function handleDividerDrop(event, targetIndex, targetList, targetParentId, targe
     return;
   }
 
-  if (isLinkCopyDrop(event)) {
+  if (isLinkCopyDrop(event) || shouldPlaceLinkedDragAsCopy(targetList)) {
     const link = createLinkItem(dragSource.target);
     if (!link || isListInsideItem(dragSource.target, targetList)) {
       return;
@@ -1213,13 +1251,19 @@ function handleDividerDrop(event, targetIndex, targetList, targetParentId, targe
 }
 
 function handleItemDragOver(event, targetItem, targetList, targetParentId, targetDepth, context = {}) {
+  if (isCurrentParentDragExitTarget(targetItem, targetDepth)) {
+    handleDragExitTargetOver(event);
+    return;
+  }
   if (!isValidItemDropTarget(targetItem, targetList, targetParentId, targetDepth)) {
     return;
   }
   event.preventDefault();
   updateLinkCopyDragState(event);
   event.dataTransfer.dropEffect = isLinkCopyDrop(event) ? "copy" : "move";
+  clearDragExitTimer();
   setActiveSublistDropTarget(event.currentTarget);
+  event.currentTarget.classList.toggle("sublist-enter-target", getItemChildren(targetItem).length > 0);
   scheduleDragEnterSublist(targetItem);
 }
 
@@ -1228,6 +1272,11 @@ function handleItemDragLeave(event, targetItem) {
     return;
   }
   event.currentTarget.classList.remove("sublist-drop-target");
+  event.currentTarget.classList.remove("sublist-enter-target");
+  event.currentTarget.classList.remove("drag-exit-target");
+  if (isCurrentParentDragExitTarget(targetItem)) {
+    clearDragExitTimer();
+  }
   clearDragEnterTimer(targetItem.id);
 }
 
@@ -1235,6 +1284,12 @@ function handleItemDrop(event, targetItem, targetList, targetParentId, targetDep
   event.preventDefault();
   event.stopPropagation();
   event.currentTarget.classList.remove("sublist-drop-target");
+  event.currentTarget.classList.remove("sublist-enter-target");
+  event.currentTarget.classList.remove("drag-exit-target");
+  if (isCurrentParentDragExitTarget(targetItem, targetDepth)) {
+    clearDragExitTimer();
+    return;
+  }
 
   const sourceId = event.dataTransfer.getData("text/plain") || dragSource?.id;
   if (!sourceId || !isValidItemDropTarget(targetItem, targetList, targetParentId, targetDepth)) {
@@ -1246,7 +1301,7 @@ function handleItemDrop(event, targetItem, targetList, targetParentId, targetDep
     return;
   }
 
-  if (isLinkCopyDrop(event)) {
+  if (isLinkCopyDrop(event) || shouldPlaceLinkedDragAsCopy(targetResolved.children)) {
     if (targetResolved === dragSource.target || isItemInsideItem(dragSource.target, targetResolved)) {
       return;
     }
@@ -1291,6 +1346,96 @@ function handleItemDrop(event, targetItem, targetList, targetParentId, targetDep
   renderWithMoveAnimation();
 }
 
+function handleDragExitZoneOver(event) {
+  if (!canDragExitCurrentLevel()) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  updateLinkCopyDragState(event);
+  scheduleDragExitLevel("edge");
+}
+
+function handleDragExitTargetOver(event) {
+  if (!canDragExitCurrentLevel()) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  event.dataTransfer.dropEffect = "move";
+  updateLinkCopyDragState(event);
+  clearDragEnterTimer();
+  clearSublistDropTargets();
+  event.currentTarget.classList.add("drag-exit-target");
+  scheduleDragExitLevel("parent");
+}
+
+function handleDragExitZoneLeave(event) {
+  if (event.currentTarget.contains(event.relatedTarget)) {
+    return;
+  }
+  clearDragExitTimer();
+}
+
+function handleDragExitZoneDrop(event) {
+  event.preventDefault();
+  clearDragExitTimer();
+}
+
+function scheduleDragExitLevel(source) {
+  if (dragExitTimer || isDragExitPending) {
+    return;
+  }
+  isDragExitPending = true;
+  dragExitSource = source;
+  updateDragEdgeZone();
+  dragExitTimer = window.setTimeout(() => {
+    if (!canDragExitCurrentLevel()) {
+      clearDragExitTimer();
+      return;
+    }
+    clearDragExitTimer();
+    currentPath = currentPath.slice(0, -1);
+    dragSource.navigatedDuringDrag = true;
+    navDirection = "back";
+    clearSublistDropTargets();
+    document.querySelectorAll(".divider.drop-target").forEach((divider) => divider.classList.remove("drop-target"));
+    renderWithMoveAnimation();
+    updateDragEdgeZone();
+  }, DRAG_EXIT_DELAY);
+}
+
+function clearDragExitTimer() {
+  clearTimeout(dragExitTimer);
+  dragExitTimer = null;
+  isDragExitPending = false;
+  dragExitSource = null;
+  clearDragExitTargets();
+  updateDragEdgeZone();
+}
+
+function clearDragExitTargets() {
+  document.querySelectorAll(".todo-item.drag-exit-target").forEach((target) => target.classList.remove("drag-exit-target"));
+}
+
+function canDragExitCurrentLevel() {
+  if (!dragSource || dragSource.didDrop || currentPath.length === 0) {
+    return false;
+  }
+  if (!dragSource.linkedRootTargetId) {
+    return true;
+  }
+  return currentPath.length > (dragSource.linkedRootDepth ?? 0) + 1;
+}
+
+function isCurrentParentDragExitTarget(item, depth = null) {
+  if (!dragSource || currentPath.length === 0) {
+    return false;
+  }
+  const targetDepth = depth ?? currentPath.indexOf(item.id);
+  return targetDepth === currentPath.length - 1 && item.id === currentPath[currentPath.length - 1];
+}
+
 function isValidDividerDropTarget(targetList, targetParentId, targetDepth) {
   return Boolean(dragSource)
     && targetParentId !== dragSource.id
@@ -1310,6 +1455,14 @@ function isValidItemDropTarget(targetItem, targetList, targetParentId, targetDep
 
 function isLinkCopyDrop(event) {
   return Boolean(event?.ctrlKey);
+}
+
+function shouldPlaceLinkedDragAsCopy(targetList) {
+  return Boolean(
+    dragSource?.linkedRootTargetId
+    && dragSource.target?.id !== dragSource.linkedRootTargetId
+    && targetList !== dragSource.parentList
+  );
 }
 
 function updateLinkCopyDragState(event) {
@@ -1345,6 +1498,7 @@ function scheduleDragEnterSublist(item) {
   }
 
   clearDragEnterTimer();
+  clearDragExitTimer();
   dragEnterTargetId = item.id;
   dragEnterTimer = window.setTimeout(() => {
     if (!dragSource || dragSource.didDrop || dragEnterTargetId !== item.id || getItemChildren(item).length === 0) {
@@ -1407,6 +1561,7 @@ function setActiveSublistDropTarget(todo) {
 
 function clearSublistDropTargets() {
   document.querySelectorAll(".todo-item.sublist-drop-target").forEach((target) => target.classList.remove("sublist-drop-target"));
+  document.querySelectorAll(".todo-item.sublist-enter-target").forEach((target) => target.classList.remove("sublist-enter-target"));
 }
 
 function renderWithMoveAnimation() {
@@ -1425,12 +1580,14 @@ function endDrag(event) {
 
 function finishDrag(dropSucceeded) {
   const source = dragSource;
+  clearDragExitTimer();
   clearDragEnterTimer();
   document.documentElement.classList.remove("dragging-todo", "link-copy-drag");
   document.querySelectorAll(".divider.drop-target").forEach((divider) => divider.classList.remove("drop-target"));
   clearSublistDropTargets();
   removeDragPreview();
   dragSource = null;
+  updateDragEdgeZone();
 
   if (!dropSucceeded && source?.navigatedDuringDrag) {
     currentPath = [...source.startPath];

@@ -257,6 +257,91 @@ input {
   outline: 0;
 }
 
+.drag-edge-fade {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--frame) + 2px);
+  z-index: 6;
+  width: min(100vw, 28rem);
+  height: clamp(72px, 12vh, 118px);
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.82) 38%, rgba(0, 0, 0, 0) 100%);
+  transform: translateX(-50%);
+  transition: opacity 150ms ease;
+}
+
+html.dragging-todo .drag-edge-fade.available {
+  opacity: 1;
+}
+
+.drag-edge-zone {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--frame) + 8px);
+  z-index: 7;
+  width: min(72%, 22rem);
+  height: 18px;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding-top: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -10px);
+  transition: opacity 150ms ease, transform 180ms cubic-bezier(0.2, 0.75, 0.2, 1);
+}
+
+html.dragging-todo .drag-edge-zone.available {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.drag-edge-zone > span {
+  position: relative;
+  width: min(100%, 18rem);
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.36);
+}
+
+.drag-edge-zone > span::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.52);
+  opacity: 0.58;
+}
+
+.drag-edge-zone > span::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-radius: inherit;
+  background-image: var(--rainbow-stripe);
+  background-size: 18rem 100%;
+  background-position: 0 50%;
+}
+
+.drag-edge-zone.is-pending > span::after {
+  animation: edgeExitProgress 720ms linear both, rainbowSlide 2.4s linear infinite;
+}
+
+html.link-copy-drag .drag-edge-zone > span::after {
+  background-image: var(--link-copy-stripe);
+}
+
+html.link-copy-drag .drag-edge-zone.is-pending > span::after {
+  animation-name: edgeExitProgress, linkCopySlide;
+}
+
 .title-editor input {
   width: min(74vw, 720px);
   background: transparent !important;
@@ -509,47 +594,39 @@ html.link-copy-drag .divider.drop-target > span {
   overflow: visible;
 }
 
-.todo-item.sublist-drop-target::before {
-  --item-drop-angle: 0deg;
-  content: "";
-  position: absolute;
-  inset: -7px;
-  padding: 3px;
-  border-radius: 14px;
-  background-image: conic-gradient(
-    from var(--item-drop-angle) at 50% 50%,
-    #ff3b5b 0deg,
-    #ff8a3d 50deg,
-    #ffd977 110deg,
-    #7ae98e 170deg,
-    #36c7dc 230deg,
-    #5e6dff 290deg,
-    #ff6ad5 350deg,
-    #ff3b5b 360deg
-  );
-  background-size: cover;
-  animation: spinItemDropColor 3.2s linear infinite;
-  pointer-events: none;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
+.todo-item.sublist-drop-target,
+.todo-item.drag-exit-target {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.06), 0 12px 30px rgba(0, 0, 0, 0.28);
+  transform: translateY(-1px) scale(1.02);
 }
 
-html.link-copy-drag .todo-item.sublist-drop-target::before {
-  background-image: conic-gradient(
-    from var(--item-drop-angle) at 50% 50%,
-    #0b54c7 0deg,
-    #0b54c7 46deg,
-    #2aa8ff 104deg,
-    #d8f3ff 152deg,
-    #176ee9 212deg,
-    #155bc3 278deg,
-    #8edcff 326deg,
-    #0b54c7 360deg
-  );
-  box-shadow: 0 0 24px rgba(42, 168, 255, 0.2);
-  animation-name: spinItemDropColor;
+.todo-item.sublist-enter-target .todo-text::before,
+.todo-item.drag-exit-target .todo-text::before {
+  content: "";
+  position: absolute;
+  left: -0.08em;
+  bottom: -0.05em;
+  height: 0.07em;
+  border-radius: 999px;
+  right: auto;
+  width: 0;
+  background-image: var(--rainbow-stripe);
+  background-size: 18rem 100%;
+  animation: edgeExitProgress 720ms linear both, rainbowSlide 2.4s linear infinite;
+}
+
+.todo-item.sublist-enter-target .todo-text::before {
+  animation-duration: 500ms, 2.4s;
+}
+
+html.link-copy-drag .todo-item.sublist-enter-target .todo-text::before {
+  background-image: var(--link-copy-stripe);
+  animation-name: edgeExitProgress, linkCopySlide;
+}
+
+.todo-item.sublist-drop-target::before {
+  content: none;
 }
 
 .drag-preview-wrap {
@@ -616,6 +693,19 @@ html.link-copy-drag .todo-item.sublist-drop-target::before {
 
 .todo-item.path-parent.completed .todo-text::before {
   background: rgba(143, 152, 163, 0.7);
+}
+
+.todo-item.path-parent.drag-exit-target .todo-text::before {
+  right: auto;
+  width: 0;
+  background: var(--rainbow-stripe);
+  background-size: 18rem 100%;
+  animation: edgeExitProgress 720ms linear both, rainbowSlide 2.4s linear infinite;
+}
+
+html.link-copy-drag .todo-item.path-parent.drag-exit-target .todo-text::before {
+  background: var(--link-copy-stripe);
+  animation-name: edgeExitProgress, linkCopySlide;
 }
 
 .todo-text,
@@ -903,6 +993,15 @@ html.dragging-todo .todo-item .item-action,
   }
   to {
     background-position: -100% 50%;
+  }
+}
+
+@keyframes edgeExitProgress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
   }
 }
 
