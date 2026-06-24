@@ -1,4 +1,4 @@
-const CACHE_NAME = "infinite-todo:v6";
+const CACHE_NAME = "infinite-todo:v11";
 const APP_SHELL = [
   "./",
   "./index.html",

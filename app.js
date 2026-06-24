@@ -70,6 +70,7 @@ document.addEventListener("keyup", (event) => {
   }
 });
 document.addEventListener("pointermove", resetDeleteIfPointerLeft);
+document.addEventListener("dragover", updateLinkCopyDragState);
 document.addEventListener("dragend", () => finishDrag(Boolean(dragSource?.didDrop)));
 
 function loadState() {
@@ -206,10 +207,13 @@ function setCurrentTitle(value) {
 }
 
 function render() {
+  const previousBadgePercents = captureBadgePercents();
   boardTitle.textContent = getCurrentTitle();
   board.dataset.depth = currentPath.length;
   listStage.replaceChildren(createStageView());
+  primeBadgePercents(previousBadgePercents);
   requestAnimationFrame(() => {
+    animateBadgePercents();
     if (pendingScrollDepth !== null) {
       const target = listStage.querySelector(`.subspace[data-depth="${pendingScrollDepth}"]`);
       if (target) {
@@ -228,6 +232,41 @@ function render() {
   });
 
   navDirection = "none";
+}
+
+function captureBadgePercents() {
+  const percents = new Map();
+  listStage.querySelectorAll(".todo-item[data-id] .child-badge").forEach((badge) => {
+    const todo = badge.closest(".todo-item[data-id]");
+    if (todo?.dataset.id) {
+      percents.set(todo.dataset.id, badge.style.getPropertyValue("--complete-percent"));
+    }
+  });
+  return percents;
+}
+
+function primeBadgePercents(previousPercents) {
+  listStage.querySelectorAll(".todo-item[data-id] .child-badge").forEach((badge) => {
+    const todo = badge.closest(".todo-item[data-id]");
+    const previousPercent = todo?.dataset.id ? previousPercents.get(todo.dataset.id) : null;
+    const nextPercent = badge.dataset.completePercent;
+    if (!previousPercent || !nextPercent || previousPercent === nextPercent) {
+      return;
+    }
+    badge.style.setProperty("--complete-percent", previousPercent);
+    badge.dataset.animatingPercent = "true";
+  });
+}
+
+function animateBadgePercents() {
+  listStage.querySelectorAll(".child-badge[data-animating-percent='true']").forEach((badge) => {
+    const nextPercent = badge.dataset.completePercent;
+    if (!nextPercent) {
+      return;
+    }
+    badge.style.setProperty("--complete-percent", nextPercent);
+    delete badge.dataset.animatingPercent;
+  });
 }
 
 function registerServiceWorker() {
@@ -465,13 +504,20 @@ function createTodoElement(item, depth, parentId, parentList, context = {}) {
 
   const descendantCount = countDescendants(item);
   if (hasSublist(item)) {
+    const completedDescendantCount = countCompletedDescendants(item);
+    const completionPercent = descendantCount ? Math.round((completedDescendantCount / descendantCount) * 100) : 0;
     const badge = document.createElement("span");
     badge.className = "child-badge";
+    badge.dataset.completePercent = `${completionPercent}%`;
+    badge.style.setProperty("--complete-percent", `${completionPercent}%`);
     if (allDescendantsComplete(item)) {
       badge.classList.add("all-done");
     }
-    badge.textContent = String(descendantCount);
-    badge.setAttribute("aria-label", `${descendantCount} items`);
+    const badgeLabel = document.createElement("span");
+    badgeLabel.className = "child-badge-label";
+    badgeLabel.textContent = String(descendantCount);
+    badge.appendChild(badgeLabel);
+    badge.setAttribute("aria-label", `${completedDescendantCount} of ${descendantCount} items complete`);
     controls.appendChild(badge);
   }
 
@@ -776,12 +822,17 @@ function resetDeleteIfPointerLeft(event) {
 }
 
 function beginPointer(event, item) {
+  if (event.button !== 0 || event.target.closest(".item-action")) {
+    return;
+  }
   pointerState = {
     id: item.id,
+    element: event.currentTarget,
     x: event.clientX,
     y: event.clientY,
     dragged: false
   };
+  event.currentTarget.classList.add("pressing");
 }
 
 function updatePointer(event) {
@@ -810,6 +861,7 @@ function endPointer(event, item) {
 }
 
 function clearPointer() {
+  pointerState?.element?.classList.remove("pressing");
   pointerState = null;
 }
 
@@ -891,6 +943,16 @@ function updateBadgeState(item) {
     return;
   }
 
+  const descendantCount = countDescendants(item);
+  const completedDescendantCount = countCompletedDescendants(item);
+  const completionPercent = descendantCount ? Math.round((completedDescendantCount / descendantCount) * 100) : 0;
+  const badgeLabel = badge.querySelector(".child-badge-label");
+  if (badgeLabel) {
+    badgeLabel.textContent = String(descendantCount);
+  }
+  badge.dataset.completePercent = `${completionPercent}%`;
+  badge.style.setProperty("--complete-percent", `${completionPercent}%`);
+  badge.setAttribute("aria-label", `${completedDescendantCount} of ${descendantCount} items complete`);
   badge.classList.toggle("all-done", allDescendantsComplete(item));
 }
 
@@ -1046,7 +1108,7 @@ function beginDrag(event, item, parentList, parentId, depth, context = {}) {
     parentList,
     parentId,
     depth,
-    isLinkCopy: event.ctrlKey,
+    isLinkCopy: false,
     linkedRootTargetId: context.linkedRootTargetId || null,
     startPath: [...currentPath],
     navigatedDuringDrag: false,
@@ -1054,6 +1116,7 @@ function beginDrag(event, item, parentList, parentId, depth, context = {}) {
   };
   event.dataTransfer.effectAllowed = "copyMove";
   event.dataTransfer.setData("text/plain", item.id);
+  event.currentTarget.classList.remove("pressing");
   event.currentTarget.classList.add("dragging");
   document.documentElement.classList.add("dragging-todo");
   document.documentElement.classList.toggle("link-copy-drag", event.ctrlKey);
@@ -1246,11 +1309,11 @@ function isValidItemDropTarget(targetItem, targetList, targetParentId, targetDep
 }
 
 function isLinkCopyDrop(event) {
-  return Boolean(dragSource?.isLinkCopy || event?.ctrlKey);
+  return Boolean(event?.ctrlKey);
 }
 
 function updateLinkCopyDragState(event) {
-  document.documentElement.classList.toggle("link-copy-drag", isLinkCopyDrop(event));
+  document.documentElement.classList.toggle("link-copy-drag", Boolean(dragSource && isLinkCopyDrop(event)));
 }
 
 function isTargetInsideDragBoundary(targetList) {
@@ -1425,6 +1488,17 @@ function countDescendants(item) {
     return 0;
   }
   return target.children.reduce((total, child) => total + 1 + countDescendants(child), 0);
+}
+
+function countCompletedDescendants(item) {
+  const target = resolveItem(item);
+  if (!Array.isArray(target?.children)) {
+    return 0;
+  }
+  return target.children.reduce((total, child) => {
+    const resolved = resolveItem(child);
+    return total + (resolved?.completed ? 1 : 0) + countCompletedDescendants(child);
+  }, 0);
 }
 
 function allDescendantsComplete(item) {
