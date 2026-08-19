@@ -205,6 +205,10 @@ input {
   transform: translateX(-50%);
 }
 
+.board-title-wrap {
+  gap: 3px;
+}
+
 .board-title,
 .title-editor input {
   max-width: min(42vw, 360px);
@@ -236,6 +240,45 @@ input {
   outline: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.delete-list-button {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.66);
+  background: rgba(0, 0, 0, 0.22);
+  opacity: 0.38;
+  cursor: pointer;
+  transition: opacity 150ms ease, color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.board-title-wrap:hover .delete-list-button,
+.delete-list-button:focus-visible {
+  opacity: 1;
+}
+
+.delete-list-button:hover,
+.delete-list-button:focus-visible {
+  color: #fff;
+  background: rgba(255, 48, 48, 0.78);
+  outline: 0;
+  transform: scale(1.08);
+}
+
+.delete-list-button svg {
+  width: 68%;
+  height: 68%;
+  stroke-width: 2.5;
+}
+
+.delete-list-button[hidden] {
+  display: none;
 }
 
 .board-title:hover,
@@ -926,6 +969,110 @@ html.dragging-todo .todo-item .item-action,
   transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
 }
 
+.list-view.list-nav-right {
+  animation: listSlideFromRight 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.list-view.list-nav-left {
+  animation: listSlideFromLeft 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.todo-board.list-switch-right .board-title-wrap {
+  animation: titleSlideFromRight 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.todo-board.list-switch-left .board-title-wrap {
+  animation: titleSlideFromLeft 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.delete-list-dialog {
+  width: min(82vw, 300px);
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--text);
+  background: #080809;
+  box-shadow: 0 22px 72px rgba(0, 0, 0, 0.74);
+  overflow: hidden;
+}
+
+.delete-list-dialog[open] {
+  animation: dialogEnter 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.delete-list-dialog::before {
+  content: "";
+  display: block;
+  height: 2px;
+  background-image: var(--rainbow-stripe);
+  background-size: 200% 100%;
+  animation: rainbowSlide 6s linear infinite;
+}
+
+.delete-list-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.76);
+}
+
+.delete-list-dialog form {
+  padding: 20px 20px 14px;
+}
+
+.delete-list-dialog p {
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.94rem;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+.dialog-actions button {
+  border: 0;
+  padding: 7px 5px;
+  color: rgba(255, 255, 255, 0.56);
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.dialog-actions button:hover {
+  color: #fff;
+}
+
+.dialog-actions button:focus-visible {
+  color: #fff;
+  outline: 0;
+  box-shadow: 0 2px 0 var(--focus);
+}
+
+.dialog-actions .confirm-list-delete {
+  color: #ff7777;
+}
+
+.dialog-actions .confirm-list-delete:hover,
+.dialog-actions .confirm-list-delete:focus-visible {
+  color: #ffaaaa;
+}
+
+@keyframes dialogEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .focus-view {
   --camera-scale: 1;
 }
@@ -1002,6 +1149,50 @@ html.dragging-todo .todo-item .item-action,
   }
   to {
     width: 100%;
+  }
+}
+
+@keyframes listSlideFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(12%) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes listSlideFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-12%) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes titleSlideFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-50% + 18px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes titleSlideFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-50% - 18px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
   }
 }
 

@@ -12,6 +12,9 @@ const ICONS = {
 
 const board = document.querySelector("#todoBoard");
 const boardTitle = document.querySelector("#boardTitle");
+const deleteListButton = document.querySelector("#deleteListButton");
+const deleteListDialog = document.querySelector("#deleteListDialog");
+const deleteListMessage = document.querySelector("#deleteListMessage");
 const titleEditor = document.querySelector("#titleEditor");
 const titleInput = document.querySelector("#titleInput");
 const viewport = document.querySelector("#viewport");
@@ -27,6 +30,7 @@ let pendingClickItemId = null;
 let pointerState = null;
 let dragSource = null;
 let navDirection = "none";
+let listNavDirection = "none";
 let isNavigatingBack = false;
 let pendingDeleteId = null;
 let pendingDeleteIsShift = false;
@@ -34,6 +38,9 @@ let editingItemId = null;
 let editingItemIsNew = false;
 let pendingScrollDepth = null;
 let pendingScrollItemId = null;
+let pendingListScrollTop = null;
+let isRestoringListView = false;
+let viewStateSaveTimer = null;
 let lastMovedItemId = null;
 let dragPreview = null;
 let dragEnterTimer = null;
@@ -42,12 +49,20 @@ let dragExitTimer = null;
 let isDragExitPending = false;
 let dragExitSource = null;
 
+restoreActiveListViewState();
 render();
 registerServiceWorker();
 board.appendChild(dragEdgeFade);
 board.appendChild(dragEdgeZone);
+deleteListButton.innerHTML = ICONS.trash;
 
 boardTitle.addEventListener("click", startTitleEdit);
+deleteListButton.addEventListener("click", openDeleteListDialog);
+deleteListDialog.addEventListener("close", () => {
+  if (deleteListDialog.returnValue === "confirm") {
+    deleteCurrentList();
+  }
+});
 titleEditor.addEventListener("submit", (event) => {
   event.preventDefault();
   finishTitleEdit();
@@ -59,10 +74,15 @@ titleInput.addEventListener("keydown", (event) => {
   }
 });
 titleInput.addEventListener("blur", finishTitleEdit);
-listStage.addEventListener("scroll", updateScrollFades);
+listStage.addEventListener("scroll", handleListScroll);
 
 document.addEventListener("keydown", (event) => {
   const isEditingText = document.activeElement === titleInput || document.activeElement?.classList.contains("todo-edit-input");
+  if (event.shiftKey && !isEditingText && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    event.preventDefault();
+    navigateLists(event.key === "ArrowLeft" ? -1 : 1);
+    return;
+  }
   if (event.key === "Escape" && !isEditingText) {
     goBack();
   }
@@ -88,14 +108,36 @@ dragEdgeZone.addEventListener("drop", handleDragExitZoneDrop);
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && Array.isArray(saved.lists) && saved.lists.length) {
+      const lists = saved.lists.map((list) => ({
+        ...list,
+        view: normalizeListView(list.view)
+      }));
+      const activeListId = lists.some((list) => list.id === saved.activeListId)
+        ? saved.activeListId
+        : lists[0].id;
+      return {
+        lists,
+        activeListId,
+        nextListNumber: getNextListNumber(lists)
+      };
+    }
     if (saved && Array.isArray(saved.items)) {
-      return saved;
+      const migratedList = {
+        id: createId(),
+        title: saved.title || "title",
+        items: saved.items,
+        isTemporary: false,
+        view: createDefaultListView()
+      };
+      return { lists: [migratedList], activeListId: migratedList.id, nextListNumber: 2 };
     }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
 
-  return {
+  const initialList = {
+    id: createId(),
     title: "title",
     items: [
       createItem("todo #1", true),
@@ -110,12 +152,178 @@ function loadState() {
       createItem("todo #10"),
       createItem("todo #11"),
       createItem("todo #12")
-    ]
+    ],
+    isTemporary: false,
+    view: createDefaultListView()
+  };
+  return { lists: [initialList], activeListId: initialList.id, nextListNumber: 2 };
+}
+
+function saveState(markDirty = true) {
+  if (markDirty) {
+    getActiveList().isTemporary = false;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function createDefaultListView() {
+  return { path: [], scrollTop: 0 };
+}
+
+function normalizeListView(view) {
+  return {
+    path: Array.isArray(view?.path) ? [...view.path] : [],
+    scrollTop: Number.isFinite(view?.scrollTop) ? Math.max(0, view.scrollTop) : 0
   };
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function saveActiveListViewState() {
+  const activeList = getActiveList();
+  activeList.view = normalizeListView(activeList.view);
+  activeList.view.path = [...currentPath];
+  activeList.view.scrollTop = listStage.scrollTop;
+}
+
+function saveActiveListPathState() {
+  const activeList = getActiveList();
+  activeList.view = normalizeListView(activeList.view);
+  activeList.view.path = [...currentPath];
+}
+
+function restoreActiveListViewState() {
+  const activeList = getActiveList();
+  activeList.view = normalizeListView(activeList.view);
+  currentPath = [...activeList.view.path];
+  pendingListScrollTop = activeList.view.scrollTop;
+  isRestoringListView = true;
+}
+
+function scheduleViewStateSave() {
+  window.clearTimeout(viewStateSaveTimer);
+  viewStateSaveTimer = window.setTimeout(() => {
+    saveState(false);
+    viewStateSaveTimer = null;
+  }, 140);
+}
+
+function getActiveList() {
+  return state.lists.find((list) => list.id === state.activeListId) || state.lists[0];
+}
+
+function getRootItems() {
+  return getActiveList().items;
+}
+
+function createTopLevelList() {
+  const number = state.nextListNumber;
+  state.nextListNumber += 1;
+  return {
+    id: createId(),
+    title: `list ${number}`,
+    items: [],
+    isTemporary: true,
+    sequenceNumber: number,
+    view: createDefaultListView()
+  };
+}
+
+function getNextListNumber(lists) {
+  const usedNumbers = lists.map((list) => {
+    if (Number.isInteger(list.sequenceNumber)) {
+      return list.sequenceNumber;
+    }
+    const match = /^list (\d+)$/i.exec(list.title || "");
+    return match ? Number(match[1]) : 1;
+  });
+  return Math.max(2, ...usedNumbers.map((number) => number + 1));
+}
+
+function recycleListNumber(list) {
+  if (list.sequenceNumber === state.nextListNumber - 1) {
+    state.nextListNumber -= 1;
+  }
+}
+
+function discardTemporaryList(list) {
+  const index = state.lists.findIndex((candidate) => candidate.id === list.id);
+  if (index >= 0) {
+    state.lists.splice(index, 1);
+  }
+  recycleListNumber(list);
+}
+
+function navigateLists(offset) {
+  if (dragSource || isNavigatingBack || deleteListDialog.open) {
+    return;
+  }
+
+  window.clearTimeout(viewStateSaveTimer);
+  viewStateSaveTimer = null;
+  saveActiveListViewState();
+
+  const activeIndex = state.lists.findIndex((list) => list.id === state.activeListId);
+  const targetList = state.lists[activeIndex + offset];
+  let nextList = targetList;
+
+  if (!nextList) {
+    nextList = createTopLevelList();
+    state.lists.splice(offset < 0 ? activeIndex : activeIndex + 1, 0, nextList);
+  } else if (getActiveList().isTemporary) {
+    discardTemporaryList(getActiveList());
+  }
+
+  state.activeListId = nextList.id;
+  prepareListNavigation(offset);
+  saveState(false);
+  render();
+}
+
+function prepareListNavigation(offset) {
+  clearPendingClick();
+  pendingDeleteId = null;
+  pendingDeleteIsShift = false;
+  editingItemId = null;
+  editingItemIsNew = false;
+  pendingScrollDepth = null;
+  pendingScrollItemId = null;
+  listStage.scrollTop = 0;
+  restoreActiveListViewState();
+  navDirection = "none";
+  listNavDirection = offset < 0 ? "left" : "right";
+  board.classList.remove("list-switch-left", "list-switch-right");
+  void board.offsetWidth;
+  board.classList.add(offset < 0 ? "list-switch-left" : "list-switch-right");
+  window.setTimeout(() => board.classList.remove("list-switch-left", "list-switch-right"), 360);
+}
+
+function openDeleteListDialog() {
+  if (currentPath.length || deleteListDialog.open) {
+    return;
+  }
+  deleteListMessage.textContent = `Delete "${getActiveList().title}"?`;
+  deleteListDialog.returnValue = "";
+  deleteListDialog.showModal();
+}
+
+function deleteCurrentList() {
+  const activeIndex = state.lists.findIndex((list) => list.id === state.activeListId);
+  const deletedList = getActiveList();
+  if (deletedList.isTemporary) {
+    discardTemporaryList(deletedList);
+  } else {
+    state.lists.splice(activeIndex, 1);
+    recycleListNumber(deletedList);
+  }
+
+  if (!state.lists.length) {
+    state.lists.push(createTopLevelList());
+  }
+
+  const nextIndex = Math.min(activeIndex, state.lists.length - 1);
+  state.activeListId = state.lists[nextIndex].id;
+  prepareListNavigation(nextIndex < activeIndex ? -1 : 1);
+  saveState(false);
+  render();
 }
 
 function createItem(text = "new todo", completed = false, children) {
@@ -180,7 +388,7 @@ function getItemIdForViewName(item) {
   return isLinkItem(item) ? item.id : resolved?.id || item.id;
 }
 
-function findItemRecord(targetId, items = state.items, path = [], parentList = null, parent = null) {
+function findItemRecord(targetId, items = getRootItems(), path = [], parentList = null, parent = null) {
   for (const item of items) {
     const itemPath = [...path, item.id];
     if (item.id === targetId) {
@@ -202,9 +410,18 @@ function updateScrollFades() {
   viewport.classList.toggle("at-scroll-bottom", maxScroll - listStage.scrollTop <= 2);
 }
 
+function handleListScroll() {
+  updateScrollFades();
+  if (isRestoringListView) {
+    return;
+  }
+  saveActiveListViewState();
+  scheduleViewStateSave();
+}
+
 function getCurrentTitle() {
   const parent = getCurrentParent();
-  return parent ? parent.text : state.title;
+  return parent ? parent.text : getActiveList().title;
 }
 
 function setCurrentTitle(value) {
@@ -213,7 +430,11 @@ function setCurrentTitle(value) {
   if (parent) {
     parent.text = title;
   } else {
-    state.title = title;
+    const activeList = getActiveList();
+    if (activeList.title === title) {
+      return;
+    }
+    activeList.title = title;
   }
   saveState();
 }
@@ -222,7 +443,10 @@ function render() {
   const previousBadgePercents = captureBadgePercents();
   boardTitle.textContent = getCurrentTitle();
   board.dataset.depth = currentPath.length;
+  deleteListButton.hidden = currentPath.length > 0;
   listStage.replaceChildren(createStageView());
+  saveActiveListPathState();
+  scheduleViewStateSave();
   updateDragEdgeZone();
   primeBadgePercents(previousBadgePercents);
   requestAnimationFrame(() => {
@@ -241,10 +465,21 @@ function render() {
       }
       pendingScrollItemId = null;
     }
+    if (pendingListScrollTop !== null) {
+      listStage.scrollTop = pendingListScrollTop;
+      pendingListScrollTop = null;
+      requestAnimationFrame(() => {
+        isRestoringListView = false;
+        updateScrollFades();
+      });
+    } else {
+      isRestoringListView = false;
+    }
     updateScrollFades();
   });
 
   navDirection = "none";
+  listNavDirection = "none";
 }
 
 function captureBadgePercents() {
@@ -293,17 +528,17 @@ function registerServiceWorker() {
 }
 
 function getCurrentList() {
-  let list = state.items;
+  let list = getRootItems();
   for (const id of currentPath) {
     const item = list.find((candidate) => candidate.id === id);
     if (!item) {
       currentPath = [];
-      return state.items;
+      return getRootItems();
     }
     const resolved = resolveItem(item);
     if (!resolved) {
       currentPath = [];
-      return state.items;
+      return getRootItems();
     }
     resolved.children ||= [];
     list = resolved.children;
@@ -316,7 +551,7 @@ function getCurrentParent() {
     return null;
   }
 
-  let list = state.items;
+  let list = getRootItems();
   let parent = null;
   for (const id of currentPath) {
     parent = list.find((candidate) => candidate.id === id);
@@ -342,8 +577,12 @@ function createStageView() {
   if (navDirection !== "none") {
     view.classList.add(`nav-${navDirection}`);
   }
+  if (listNavDirection !== "none") {
+    view.classList.add(`list-nav-${listNavDirection}`);
+  }
 
-  view.appendChild(currentPath.length ? renderFocusedList(state.items, 0, null) : renderList(state.items, 0, null));
+  const rootItems = getRootItems();
+  view.appendChild(currentPath.length ? renderFocusedList(rootItems, 0, null) : renderList(rootItems, 0, null));
   return view;
 }
 
@@ -825,7 +1064,7 @@ function collectItemIds(item, ids = []) {
   return ids;
 }
 
-function removeLinksToTargets(targetIds, list = state.items) {
+function removeLinksToTargets(targetIds, list = getRootItems()) {
   for (let index = list.length - 1; index >= 0; index -= 1) {
     const item = list[index];
     if (isLinkItem(item) && targetIds.includes(item.linkTargetId)) {
@@ -993,7 +1232,7 @@ function updateBadgeState(item) {
 
 function findItemAncestors(targetId) {
   const path = [];
-  collectAncestors(state.items, targetId, path);
+  collectAncestors(getRootItems(), targetId, path);
   return path;
 }
 
@@ -1010,7 +1249,7 @@ function collectAncestors(items, targetId, path) {
   return false;
 }
 
-function findParentList(targetId, items = state.items) {
+function findParentList(targetId, items = getRootItems()) {
   for (const item of items) {
     if (item.id === targetId) {
       return items;
